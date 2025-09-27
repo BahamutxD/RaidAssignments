@@ -8,7 +8,7 @@ RaidAssignments.GeneralAssignments = CreateFrame("Button", "GeneralAssignments",
 RaidAssignments_Settings = RaidAssignments_Settings or {}
 
 RaidAssignments.RoleFilter = {
-    TankPrimary = { Warrior = true, Druid = true, Paladin = true, Shaman = true }, -- Added Shaman
+    TankPrimary = { Warrior = true, Druid = true, Paladin = true, Shaman = true },
     Healer = { Priest = true, Druid = true, Shaman = true, Paladin = true }
 }
 
@@ -25,7 +25,7 @@ RaidAssignments.Settings = {
 	["active"] = "",
 	["active_heal"] = "",
 	["active_general"] = "",
-	["MinimapPos"] = 0, -- Default angle for minimap position
+	["MinimapPos"] = 0,
 	["GeneralFrame"] = false,
 	["GeneralAnimation"] = false,
 	["GeneralFrameX"] = 700,
@@ -194,11 +194,8 @@ function RaidAssignments:OnEvent()
     if event == "ADDON_LOADED" and arg1 == "RaidAssignments" then
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: RaidAssignments 2.0 Loaded!")
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta - open/close RaidAssignments")
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta colors - turn chatcolors on/off")
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta test - toggle test mode with 40 dummy players")
-        if RaidAssignments_Settings["usecolors"] == nil then
-            RaidAssignments_Settings["usecolors"] = false
-        end
+        RaidAssignments_Settings["usecolors"] = true
         RaidAssignments:ConfigMainFrame()
         RaidAssignments:ConfigGeneralFrame()
         RaidAssignments:UnregisterEvent("ADDON_LOADED")
@@ -242,8 +239,8 @@ function RaidAssignments:OnEvent()
 					[1] = {}, [2] = {}, [3] = {}, [4] = {},
 					[5] = {}, [6] = {}, [7] = {}, [8] = {},
 				}
-				-- allow trailing or missing "|"
-				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^|]+)|?") do
+				-- allow trailing or missing ";"
+				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^;]+);?") do  -- Change | to ;
 					mark = tonumber(mark)
 					slot = tonumber(slot)
 					if mark and slot and name then
@@ -251,7 +248,6 @@ function RaidAssignments:OnEvent()
 					end
 				end
 				RaidAssignments:UpdateGeneral()
-
             elseif string.sub(arg1, 7, string.len(arg1)) == "Ignore" then
                 -- Handle ignore case if needed
             end
@@ -729,7 +725,7 @@ function RaidAssignments:ConfigGeneralFrame()
     self.generalText:SetText("General Assignments")
     
     local classIconStartX = 50
-    local classIconY = -25
+    local classIconY = -45
     local i = 1
     for n, class in pairs(RaidAssignments.Classes) do	
         local r, l, t, b = RaidAssignments:ClassPos(class)
@@ -1319,7 +1315,13 @@ function RaidAssignments:SendHeals()
         SendAddonMessage("HealAssignmentsMarks", sendstring, "RAID")
         end
     end
-
+	
+function RaidAssignments:SanitizeName(name)
+    if not name then return "" end
+    -- Replace non-ASCII characters with their closest ASCII equivalent or remove them
+    local sanitized = string.gsub(name, "[^%w%s%-]", "")
+    return sanitized
+end
 
 function RaidAssignments:SendGeneral()
     if IsRaidOfficer("player") then
@@ -1328,7 +1330,7 @@ function RaidAssignments:SendGeneral()
             -- use pairs instead of ipairs (works even if slots are sparse)
             for slot, v in pairs(RaidAssignments.GeneralMarks[mark]) do
                 if v then
-                    sendstring = sendstring .. mark .. "-" .. slot .. v .. "|"
+                    sendstring = sendstring .. mark .. "-" .. slot .. v .. ";"  -- Change | to ;
                 end
             end
         end
@@ -1336,8 +1338,6 @@ function RaidAssignments:SendGeneral()
         SendAddonMessage("RaidAssignmentsGeneralMarks", sendstring, "RAID")
     end
 end
-
-
 
 function RaidAssignments:OpenToolTip(frameName)
     if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
@@ -1602,22 +1602,23 @@ function RaidAssignments:AddToolTipFrame(name, tooltip)
     frame.name:SetText(name)
     
     frame:SetScript("OnClick", function()
-        if IsRaidOfficer("player") then
-            this:Hide()
-            if tooltip == RaidAssignments.ToolTip then
-                RaidAssignments:AddTank(this:GetName(), RaidAssignments.Settings["active"])
-                RaidAssignments:OpenToolTip("T"..RaidAssignments.Settings["active"])
-            elseif tooltip == RaidAssignments.HealToolTip then
-                RaidAssignments:AddHeal(this:GetName(), RaidAssignments.Settings["active_heal"])
-                RaidAssignments:OpenHealToolTip("H"..RaidAssignments.Settings["active_heal"])
-            elseif tooltip == RaidAssignments.GeneralToolTip then
-                RaidAssignments:AddGeneral(this:GetName(), RaidAssignments.Settings["active_general"])
-                RaidAssignments:OpenGeneralToolTip("G"..RaidAssignments.Settings["active_general"])
-            end
-            RaidAssignments:SendTanks()
-            RaidAssignments:SendHeals()
-        end
-    end)
+		if IsRaidOfficer("player") then
+			this:Hide()
+			if tooltip == RaidAssignments.ToolTip then
+				RaidAssignments:AddTank(this:GetName(), RaidAssignments.Settings["active"])
+				RaidAssignments:OpenToolTip("T"..RaidAssignments.Settings["active"])
+			elseif tooltip == RaidAssignments.HealToolTip then
+				RaidAssignments:AddHeal(this:GetName(), RaidAssignments.Settings["active_heal"])
+				RaidAssignments:OpenHealToolTip("H"..RaidAssignments.Settings["active_heal"])
+			elseif tooltip == RaidAssignments.GeneralToolTip then
+				RaidAssignments:AddGeneral(this:GetName(), RaidAssignments.Settings["active_general"])
+				RaidAssignments:OpenGeneralToolTip("G"..RaidAssignments.Settings["active_general"])
+			end
+			RaidAssignments:SendTanks()
+			RaidAssignments:SendHeals()
+			RaidAssignments:SendGeneral()  -- ADD THIS LINE
+		end
+	end)
     frame.unit = unit
     frame:SetScript("OnEnter", UnitFrame_OnEnter)
     frame:SetScript("OnLeave", UnitFrame_OnLeave)
@@ -1665,19 +1666,19 @@ function RaidAssignments:AddTankFrame(name, mark)
     end
 
     frame:SetScript("OnClick", function()
-        if IsRaidOfficer("player") then
-            for k, v in pairs(RaidAssignments.Marks[mark]) do
-                if v == name then
-                    table.remove(RaidAssignments.Marks[mark], k)
-                    table.sort(RaidAssignments.Marks[mark])
-                    this:Hide()
-                    RaidAssignments.Frames[mark][name] = nil -- clear cached frame
-                    RaidAssignments:UpdateTanks()
-                end
-            end
-            RaidAssignments:SendTanks()
-        end
-    end)
+		if IsRaidOfficer("player") then
+			for k, v in pairs(RaidAssignments.GeneralMarks[mark]) do
+				if v == name then
+					table.remove(RaidAssignments.GeneralMarks[mark], k)
+					table.sort(RaidAssignments.GeneralMarks[mark])
+					this:Hide()
+					RaidAssignments.GeneralFrames[mark][name] = nil -- clear cached frame
+					RaidAssignments:UpdateGeneral()
+				end
+			end
+			RaidAssignments:SendGeneral()  -- ADD THIS LINE
+		end
+	end)
     frame.unit = unit
     frame:SetScript("OnEnter", UnitFrame_OnEnter)
     frame:SetScript("OnLeave", UnitFrame_OnLeave)
@@ -1793,6 +1794,7 @@ function RaidAssignments:AddGeneralFrame(name, mark)
                     this:Hide()
                     RaidAssignments.GeneralFrames[mark][name] = nil -- clear cached frame
                     RaidAssignments:UpdateGeneral()
+                    RaidAssignments:SendGeneral() -- Broadcast the updated GeneralMarks
                 end
             end
         end
@@ -2025,18 +2027,10 @@ function RaidAssignments:Slash(arg1)
 			RaidAssignments.Settings["SizeY"] = 0
 			RaidAssignments:Show()
 		end
-	elseif arg1 == "colors" then
-		if not RaidAssignments_Settings["usecolors"] then
-			RaidAssignments_Settings["usecolors"] = true
-			DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Using chat colors (note that some servers do not support this option)")
-		else
-			RaidAssignments_Settings["usecolors"] = false
-			DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Chat colors turned off")		
-		end
 	elseif arg1 == "test" then
 		RaidAssignments:ToggleTestMode()
 	else
-		DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Unknown command. Use /ta, /ta colors, or /ta test")
+		DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Unknown command. Use /ta, or /ta test")
 	end
 end
 

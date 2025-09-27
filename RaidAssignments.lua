@@ -191,87 +191,83 @@ RaidAssignments:RegisterEvent("CHAT_MSG_ADDON")
 RaidAssignments:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 
 function RaidAssignments:OnEvent()
-	if event == "ADDON_LOADED" and arg1 == "RaidAssignments" then
-		DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: RaidAssignments 2.0 Loaded!")
-		DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta - open/close RaidAssignments")
-		DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta colors - turn chatcolors on/off")
-		DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta test - toggle test mode with 40 dummy players")
-		if RaidAssignments_Settings["usecolors"] == nil then
-			RaidAssignments_Settings["usecolors"] = false
-		end
-		RaidAssignments:ConfigMainFrame()
-		RaidAssignments:ConfigGeneralFrame()
-		RaidAssignments:UnregisterEvent("ADDON_LOADED")
-	elseif event == "RAID_ROSTER_UPDATE" then 
-		RaidAssignments:UpdateTanks()
-		RaidAssignments:UpdateHeals()
-		RaidAssignments:UpdateGeneral()
-	elseif event ==	"UNIT_PORTRAIT_UPDATE" then
-		RaidAssignments:UpdateTanks()
-		RaidAssignments:UpdateHeals()
-		RaidAssignments:UpdateGeneral()
-	elseif (event == "CHAT_MSG_ADDON") then
-		if string.sub(arg1,1,15) == "RaidAssignments" and UnitName("player") ~= arg4 then
-			if string.sub(arg1,16,string.len(arg1)) == "Marks" then
-				RaidAssignments.Marks = {
-					[1] = {},
-					[2] = {},
-					[3] = {},
-					[4] = {},
-					[5] = {},
-					[6] = {},
-					[7] = {},
-					[8] = {},
-				}
-				for text in string.gfind(arg2,"%d%a+") do	
-					local mark = tonumber(string.sub(text,1,1))
-					table.insert(RaidAssignments.Marks[mark],string.sub(text,2,string.len(text)))
-				end
-				RaidAssignments:UpdateTanks()
-			elseif string.sub(arg1,16,string.len(arg1)) == "HealMarks" then
+    if event == "ADDON_LOADED" and arg1 == "RaidAssignments" then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: RaidAssignments 2.0 Loaded!")
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta - open/close RaidAssignments")
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta colors - turn chatcolors on/off")
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta test - toggle test mode with 40 dummy players")
+        if RaidAssignments_Settings["usecolors"] == nil then
+            RaidAssignments_Settings["usecolors"] = false
+        end
+        RaidAssignments:ConfigMainFrame()
+        RaidAssignments:ConfigGeneralFrame()
+        RaidAssignments:UnregisterEvent("ADDON_LOADED")
+    elseif event == "RAID_ROSTER_UPDATE" then 
+        RaidAssignments:UpdateTanks()
+        RaidAssignments:UpdateHeals()
+        RaidAssignments:UpdateGeneral()
+    elseif event == "UNIT_PORTRAIT_UPDATE" then
+        RaidAssignments:UpdateTanks()
+        RaidAssignments:UpdateHeals()
+        RaidAssignments:UpdateGeneral()
+    elseif event == "CHAT_MSG_ADDON" then
+        if (arg1 == "TankAssignmentsMarks" or arg1 == "HealAssignmentsMarks" or arg1 == "RaidAssignmentsGeneralMarks" or string.sub(arg1, 1, 15) == "RaidAssignments") and UnitName("player") ~= arg4 then
+            if arg1 == "TankAssignmentsMarks" then
+                RaidAssignments.Marks = {
+                    [1] = {}, [2] = {}, [3] = {}, [4] = {}, [5] = {}, [6] = {}, [7] = {}, [8] = {},
+                }
+                for text in string.gfind(arg2, "%d%a+") do
+                    local mark = tonumber(string.sub(text, 1, 1))
+                    table.insert(RaidAssignments.Marks[mark], string.sub(text, 2, string.len(text)))
+                end
+                RaidAssignments:UpdateTanks()
+            elseif arg1 == "HealAssignmentsMarks" then
 				RaidAssignments.HealMarks = {
-					[1] = {nil, nil, nil, nil},
-					[2] = {nil, nil, nil, nil},
-					[3] = {nil, nil, nil, nil},
-					[4] = {nil, nil, nil, nil},
-					[5] = {nil, nil, nil, nil},
-					[6] = {nil, nil, nil, nil},
-					[7] = {nil, nil, nil, nil},
-					[8] = {nil, nil, nil, nil},
-					[9] = {nil, nil, nil, nil},
-					[10] = {nil, nil, nil, nil},
-					[11] = {nil, nil, nil, nil},
-					[12] = {nil, nil, nil, nil},
+					[1] = {nil, nil, nil, nil}, [2] = {nil, nil, nil, nil}, [3] = {nil, nil, nil, nil},
+					[4] = {nil, nil, nil, nil}, [5] = {nil, nil, nil, nil}, [6] = {nil, nil, nil, nil},
+					[7] = {nil, nil, nil, nil}, [8] = {nil, nil, nil, nil}, [9] = {nil, nil, nil, nil},
+					[10] = {nil, nil, nil, nil}, [11] = {nil, nil, nil, nil}, [12] = {nil, nil, nil, nil},
 				}
-				for num, name in string.gmatch(arg2, "(%d+)([^%d]+)") do
-					local mark = tonumber(num)
-					local slot = 1
-					while RaidAssignments.HealMarks[mark][slot] do
-						slot = slot + 1
-					end
-					if slot <= 4 then
+				-- parse mark-slot-name triplets
+				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^%d]+)") do
+					mark = tonumber(mark)
+					slot = tonumber(slot)
+					if mark and slot and slot <= 4 then
 						RaidAssignments.HealMarks[mark][slot] = name
 					end
 				end
 				RaidAssignments:UpdateHeals()
-			elseif string.sub(arg1,7,string.len(arg1)) == "Ignore" then
-			end
-		end
-	elseif (event == "UPDATE_MOUSEOVER_UNIT") then
-		if UnitExists("mouseover") then
-			if GetRaidTargetIndex("mouseover") then
-				for i=1,8 do
-					if GetRaidTargetIndex("mouseover") == i and table.getn(RaidAssignments.Marks[i]) > 0 then
-						local names = ""
-						for k,v in pairs(RaidAssignments.Marks[i]) do
-							names = names.." "..v
-						end
-						GameTooltip:AddDoubleLine("RaidAssignments",names, 0.78, 0.61, 0.43, 1, 1, 1)
+            elseif arg1 == "RaidAssignmentsGeneralMarks" then
+				RaidAssignments.GeneralMarks = {
+					[1] = {}, [2] = {}, [3] = {}, [4] = {}, [5] = {}, [6] = {}, [7] = {}, [8] = {},
+				}
+				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^|]+)|") do
+					mark = tonumber(mark)
+					slot = tonumber(slot)
+					if mark and slot then
+						RaidAssignments.GeneralMarks[mark][slot] = name
 					end
 				end
-			end
-		end
-	end	
+				RaidAssignments:UpdateGeneral()
+            elseif string.sub(arg1, 7, string.len(arg1)) == "Ignore" then
+                -- Handle ignore case if needed
+            end
+        end
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        if UnitExists("mouseover") then
+            if GetRaidTargetIndex("mouseover") then
+                for i = 1, 8 do
+                    if GetRaidTargetIndex("mouseover") == i and table.getn(RaidAssignments.Marks[i]) > 0 then
+                        local names = ""
+                        for k, v in pairs(RaidAssignments.Marks[i]) do
+                            names = names .. " " .. v
+                        end
+                        GameTooltip:AddDoubleLine("RaidAssignments", names, 0.78, 0.61, 0.43, 1, 1, 1)
+                    end
+                end
+            end
+        end
+    end
 end
 
 function RaidAssignments:ConfigMainFrame()
@@ -852,6 +848,14 @@ function RaidAssignments:WhisperAssignments()
             end
         end
     end
+    for i = 1, 8 do
+        for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
+            if RaidAssignments:IsInRaid(v) then
+                local text = "You are assigned to " .. RaidAssignments.GeneralRealMarks[i] .. " (slot " .. k .. ")"
+                SendChatMessage(text, "WHISPER", nil, v)
+            end
+        end
+    end
     DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Whispered assignments to players")
 end
 
@@ -1292,26 +1296,44 @@ function RaidAssignments:SendTanks()
 			end
 		end
 		if sendstring ~= "" then
-			SendAddonMessage("RaidAssignmentsMarks", sendstring, "RAID")
+			SendAddonMessage("TankAssignmentsMarks",sendstring,"RAID")
 		end
 	end
 end
 
 function RaidAssignments:SendHeals()
-	if IsRaidOfficer("player") then
-		local sendstring = ""
-		for mark=1,12 do
-			for k=1,4 do
-				local v = RaidAssignments.HealMarks[mark][k]
-				if v then
-					sendstring = sendstring .. mark .. v
-				end
-			end
-		end
-		if sendstring ~= "" then
-			SendAddonMessage("RaidAssignmentsHealMarks", sendstring, "RAID")
-		end
-	end
+    if IsRaidOfficer("player") then
+        local sendstring = ""
+        for mark = 1, 12 do
+            for slot = 1, 4 do
+                local v = RaidAssignments.HealMarks[mark][slot]
+                if v then
+                    -- include slot index in the string
+                    sendstring = sendstring .. mark .. "-" .. slot .. v
+                end
+            end
+        end
+        if sendstring ~= "" then
+            SendAddonMessage("HealAssignmentsMarks", sendstring, "RAID")
+        end
+    end
+end
+
+
+function RaidAssignments:SendGeneral()
+    if IsRaidOfficer("player") then
+        local sendstring = ""
+        for mark = 1, 8 do
+            for slot, v in ipairs(RaidAssignments.GeneralMarks[mark]) do
+                if v then
+                    sendstring = sendstring .. mark .. "-" .. slot .. v .. "|"
+                end
+            end
+        end
+        if sendstring ~= "" then
+            SendAddonMessage("RaidAssignmentsGeneralMarks", sendstring, "RAID")
+        end
+    end
 end
 
 function RaidAssignments:OpenToolTip(frameName)

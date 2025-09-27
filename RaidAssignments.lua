@@ -239,16 +239,19 @@ function RaidAssignments:OnEvent()
 				RaidAssignments:UpdateHeals()
             elseif arg1 == "RaidAssignmentsGeneralMarks" then
 				RaidAssignments.GeneralMarks = {
-					[1] = {}, [2] = {}, [3] = {}, [4] = {}, [5] = {}, [6] = {}, [7] = {}, [8] = {},
+					[1] = {}, [2] = {}, [3] = {}, [4] = {},
+					[5] = {}, [6] = {}, [7] = {}, [8] = {},
 				}
-				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^|]+)|") do
+				-- allow trailing or missing "|"
+				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^|]+)|?") do
 					mark = tonumber(mark)
 					slot = tonumber(slot)
-					if mark and slot then
+					if mark and slot and name then
 						RaidAssignments.GeneralMarks[mark][slot] = name
 					end
 				end
 				RaidAssignments:UpdateGeneral()
+
             elseif string.sub(arg1, 7, string.len(arg1)) == "Ignore" then
                 -- Handle ignore case if needed
             end
@@ -1288,18 +1291,18 @@ function RaidAssignments:UpdateGeneral()
 end
 
 function RaidAssignments:SendTanks()
-	if IsRaidOfficer("player") then
-		local sendstring = ""
-		for mark=1,8 do
-			for k,v in pairs(RaidAssignments.Marks[mark]) do
-				sendstring = sendstring .. mark .. v
-			end
-		end
-		if sendstring ~= "" then
-			SendAddonMessage("TankAssignmentsMarks",sendstring,"RAID")
-		end
-	end
+    if IsRaidOfficer("player") then
+        local sendstring = ""
+        for mark=1,8 do
+            for k,v in pairs(RaidAssignments.Marks[mark]) do
+                sendstring = sendstring .. mark .. v
+            end
+        end
+        -- always send, even if empty
+        SendAddonMessage("TankAssignmentsMarks", sendstring, "RAID")
+    end
 end
+
 
 function RaidAssignments:SendHeals()
     if IsRaidOfficer("player") then
@@ -1313,28 +1316,28 @@ function RaidAssignments:SendHeals()
                 end
             end
         end
-        if sendstring ~= "" then
-            SendAddonMessage("HealAssignmentsMarks", sendstring, "RAID")
+        SendAddonMessage("HealAssignmentsMarks", sendstring, "RAID")
         end
     end
-end
 
 
 function RaidAssignments:SendGeneral()
     if IsRaidOfficer("player") then
         local sendstring = ""
         for mark = 1, 8 do
-            for slot, v in ipairs(RaidAssignments.GeneralMarks[mark]) do
+            -- use pairs instead of ipairs (works even if slots are sparse)
+            for slot, v in pairs(RaidAssignments.GeneralMarks[mark]) do
                 if v then
                     sendstring = sendstring .. mark .. "-" .. slot .. v .. "|"
                 end
             end
         end
-        if sendstring ~= "" then
-            SendAddonMessage("RaidAssignmentsGeneralMarks", sendstring, "RAID")
-        end
+        -- always send, even if empty
+        SendAddonMessage("RaidAssignmentsGeneralMarks", sendstring, "RAID")
     end
 end
+
+
 
 function RaidAssignments:OpenToolTip(frameName)
     if GetRaidRosterInfo(1) or RaidAssignments.TestMode then

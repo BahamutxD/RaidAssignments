@@ -29,7 +29,7 @@ RaidAssignments.Settings = {
 	["GeneralFrame"] = false,
 	["GeneralAnimation"] = false,
 	["GeneralFrameX"] = 700,
-	["GeneralFrameY"] = 500,
+	["GeneralFrameY"] = 560, -- Increased by 60 to accommodate EditBox fields
 	["GeneralSizeX"] = 0,
 	["GeneralSizeY"] = 0,
 }
@@ -87,25 +87,23 @@ RaidAssignments.HealRealMarks = {
 }
 
 RaidAssignments.GeneralMarks = {
-	[1] = {},
-	[2] = {},
-	[3] = {},
-	[4] = {},
-	[5] = {},
-	[6] = {},
-	[7] = {},
-	[8] = {},
+[1] = {}, [2] = {}, [3] = {}, [4] = {},
+[5] = {}, [6] = {}, [7] = {}, [8] = {},
+[9] = {}, [10] = {}, -- new custom marks
 }
 
+
 RaidAssignments.GeneralRealMarks = {
-	[1] = "1: North",
-	[2] = "2: North East",
-	[3] = "3: East",
-	[4] = "4: South East",
-	[5] = "5: South",
-	[6] = "6: South West",
-	[7] = "7: West",
-	[8] = "8: North West",
+[1] = "1: North",
+[2] = "2: North East",
+[3] = "3: East",
+[4] = "4: South East",
+[5] = "5: South",
+[6] = "6: South West",
+[7] = "7: West",
+[8] = "8: North West",
+[9] = "", -- editable
+[10] = "", -- editable
 }
 
 RaidAssignments.Frames = {
@@ -146,6 +144,8 @@ RaidAssignments.GeneralFrames = {
 	[6] = {},
 	[7] = {},
 	[8] = {},
+	[9] = {},
+   [10] = {},
 }
 
 RaidAssignments.Classes = {
@@ -477,10 +477,12 @@ function RaidAssignments:ConfigMainFrame()
         RaidAssignments.Settings["MainFrame"] = false
     end)
 	
+    -- In the ConfigMainFrame() function, replace the existing KT and 4H button code with this:
+
     -- KT Image Button
     self.ktButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
-    self.ktButton:SetPoint("BOTTOM", -400, 10) -- left of Post Tank Assignments
-    self.ktButton:SetWidth(72)  -- 50% of original 145
+    self.ktButton:SetPoint("BOTTOM", -450, 10) -- Moved further left
+    self.ktButton:SetWidth(60)  -- Reduced from 72 to 60
     self.ktButton:SetHeight(24)
     self.ktButton:SetText("KT Image")
     self.ktButton:SetScript("OnClick", function()
@@ -519,8 +521,8 @@ function RaidAssignments:ConfigMainFrame()
 
     -- 4H Image Button
     self.fourhButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
-    self.fourhButton:SetPoint("LEFT", self.ktButton, "RIGHT", 10, 0) -- right next to KT button
-    self.fourhButton:SetWidth(72)  -- 50% of original 145
+    self.fourhButton:SetPoint("LEFT", self.ktButton, "RIGHT", 5, 0) -- Reduced spacing from 10 to 5
+    self.fourhButton:SetWidth(60)  -- Reduced from 72 to 60
     self.fourhButton:SetHeight(24)
     self.fourhButton:SetText("4H Image")
     self.fourhButton:SetScript("OnClick", function()
@@ -554,6 +556,46 @@ function RaidAssignments:ConfigMainFrame()
             RaidAssignments.FourHFrame:Hide()
         else
             RaidAssignments.FourHFrame:Show()
+        end
+    end)
+
+    -- Cthun Image Button
+    self.cthunButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.cthunButton:SetPoint("LEFT", self.fourhButton, "RIGHT", 5, 0) -- Right next to 4H button
+    self.cthunButton:SetWidth(60)  -- Same size as others
+    self.cthunButton:SetHeight(24)
+    self.cthunButton:SetText("Cthun Image")
+    self.cthunButton:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        if not RaidAssignments.CthunFrame then
+            RaidAssignments.CthunFrame = CreateFrame("Frame", "RaidAssignmentsCthunFrame", UIParent)
+            RaidAssignments.CthunFrame:SetFrameStrata("DIALOG")
+            RaidAssignments.CthunFrame:SetWidth(512)
+            RaidAssignments.CthunFrame:SetHeight(512)
+            RaidAssignments.CthunFrame:SetPoint("CENTER", 0, 0)
+            RaidAssignments.CthunFrame:EnableMouse(true)
+            RaidAssignments.CthunFrame:SetMovable(true)
+            RaidAssignments.CthunFrame:RegisterForDrag("LeftButton")
+            RaidAssignments.CthunFrame:SetScript("OnDragStart", function() this:StartMoving() end)
+            RaidAssignments.CthunFrame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+
+            -- Image
+            RaidAssignments.CthunFrame.texture = RaidAssignments.CthunFrame:CreateTexture(nil, "ARTWORK")
+            RaidAssignments.CthunFrame.texture:SetAllPoints(RaidAssignments.CthunFrame)
+            RaidAssignments.CthunFrame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\CThun.tga")
+
+            -- Close Button
+            RaidAssignments.CthunFrame.close = CreateFrame("Button", nil, RaidAssignments.CthunFrame, "UIPanelCloseButton")
+            RaidAssignments.CthunFrame.close:SetPoint("TOPRIGHT", RaidAssignments.CthunFrame, "TOPRIGHT")
+            RaidAssignments.CthunFrame.close:SetScript("OnClick", function()
+                RaidAssignments.CthunFrame:Hide()
+            end)
+        end
+
+        if RaidAssignments.CthunFrame:IsShown() then
+            RaidAssignments.CthunFrame:Hide()
+        else
+            RaidAssignments.CthunFrame:Show()
         end
     end)
 
@@ -722,17 +764,12 @@ function RaidAssignments:ConfigGeneralFrame()
         tile = false,
         tileSize = 16,
         edgeSize = 2,
-        insets = {
-            left = 1,
-            right = 1,
-            top = 1,
-            bottom = 1
-        }
+        insets = { left = 1, right = 1, top = 1, bottom = 1 }
     }
     
     RaidAssignments.GeneralAssignments:SetFrameStrata("BACKGROUND")
-    RaidAssignments.GeneralAssignments:SetWidth(RaidAssignments.Settings["GeneralFrameX"]) 
-    RaidAssignments.GeneralAssignments:SetHeight(RaidAssignments.Settings["GeneralFrameY"]) 
+    RaidAssignments.GeneralAssignments:SetWidth(RaidAssignments.Settings["GeneralFrameX"])
+	RaidAssignments.GeneralAssignments:SetHeight(RaidAssignments.Settings["GeneralFrameY"] + 60) -- Increased by 60 to accommodate EditBox fields
     RaidAssignments.GeneralAssignments:SetPoint("CENTER",0,100)
     RaidAssignments.GeneralAssignments:SetMovable(true)
     RaidAssignments.GeneralAssignments:EnableMouse(true)
@@ -782,22 +819,20 @@ function RaidAssignments:ConfigGeneralFrame()
                 end
             end
         end
-    end)    
+    end)
 
     self.generalBg = CreateFrame("Button", "generalBg", RaidAssignments.GeneralAssignments)
-    self.generalBg:SetWidth(RaidAssignments.GeneralAssignments:GetWidth()) 
-    self.generalBg:SetHeight(RaidAssignments.GeneralAssignments:GetHeight()) 
-    self.generalBg:SetPoint("TOPLEFT",0,0)    
+    self.generalBg:SetWidth(RaidAssignments.GeneralAssignments:GetWidth())
+    self.generalBg:SetHeight(RaidAssignments.GeneralAssignments:GetHeight())
+    self.generalBg:SetPoint("TOPLEFT",0,0)
     self.generalBg:SetBackdropColor(0,0,0,1)
     self.generalBg:EnableMouse(true)
     self.generalBg:SetMovable(true)
     self.generalBg:RegisterForDrag("LeftButton")
     self.generalBg:SetScript("OnDragStart", RaidAssignments.GeneralDrag.StartMoving)
     self.generalBg:SetScript("OnDragStop", RaidAssignments.GeneralDrag.StopMovingOrSizing)
-    self.generalBg:SetScript("OnEnter", function()
-        RaidAssignments.GeneralToolTip:Hide()
-    end)
-    
+    self.generalBg:SetScript("OnEnter", function() RaidAssignments.GeneralToolTip:Hide() end)
+
     self.generalText = self.generalBg:CreateFontString(nil, "OVERLAY")
     self.generalText:SetPoint("TOP", self.generalBg, "TOP", 0, -20)
     self.generalText:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 25)
@@ -805,15 +840,12 @@ function RaidAssignments:ConfigGeneralFrame()
     self.generalText:SetTextColor(r,g,b, 1)
     self.generalText:SetShadowOffset(2,-2)
     self.generalText:SetText("General Assignments")
-    
-    local classIconStartX = 50
-    local classIconY = -45
-    local i = 1
-    for n, class in pairs(RaidAssignments.Classes) do	
+
+    local classIconStartX, classIconY, i = 50, -45, 1
+    for n, class in pairs(RaidAssignments.Classes) do
         local r, l, t, b = RaidAssignments:ClassPos(class)
         local classframe = CreateFrame("Button", class, self.generalBg)
-        classframe:SetWidth(22)
-        classframe:SetHeight(22)
+        classframe:SetWidth(22) classframe:SetHeight(22)
         classframe:SetBackdropColor(0,0,0,1)
         classframe:SetPoint("TOPLEFT", classIconStartX + (i*25), classIconY)
         classframe:SetFrameStrata("MEDIUM")
@@ -821,90 +853,177 @@ function RaidAssignments:ConfigGeneralFrame()
         classframe.Icon:SetTexture("Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes")
         classframe.Icon:SetTexCoord(r, l, t, b)
         classframe.Icon:SetPoint("TOPRIGHT", -1, -1)
-        classframe.Icon:SetWidth(22)
-        classframe.Icon:SetHeight(22)
-        classframe:SetScript("OnEnter", function() 
-            local r,g,b = RaidAssignments:GetClassColors(this:GetName(),"class")
-            GameTooltip:SetOwner(classframe, "ANCHOR_TOPRIGHT")
-            GameTooltip:SetText("|cffFFFFFFShow|r "..this:GetName(), r,g,b)
-            GameTooltip:Show()
-        end)
-        classframe:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        classframe:SetScript("OnMouseDown", function()
-            if arg1 == "LeftButton" then
-                if RaidAssignments_Settings[this:GetName()] == 1 then
-                    RaidAssignments_Settings[this:GetName()] = 0
-                    classframe.Icon:SetVertexColor(0.5, 0.5, 0.5)
-                else
-                    RaidAssignments_Settings[this:GetName()] = 1
-                    classframe.Icon:SetVertexColor(1.0, 1.0, 1.0)
-                end
-            end
-        end)
+        classframe.Icon:SetWidth(22) classframe.Icon:SetHeight(22)
         i = i + 1
-        if RaidAssignments_Settings[class] == nil then
-            RaidAssignments_Settings[class] = 1
-            classframe.Icon:SetVertexColor(1.0, 1.0, 1.0)			
-        else
-            if RaidAssignments_Settings[class] == 1 then
-                classframe.Icon:SetVertexColor(1.0, 1.0, 1.0)
-            else
-                classframe.Icon:SetVertexColor(0.5, 0.5, 0.5)
-            end			
-        end
     end
 
-    local padding = 5
-    for i = 1, 8 do
-        local icon = CreateFrame("Frame", "G"..i, self.generalBg) 
-        icon:SetWidth(35)
-        icon:SetHeight(35) 
-        icon:SetPoint("TOPLEFT", 50, -75 - ((35 + padding) * (i - 1)))
-        icon:SetFrameStrata("MEDIUM")
-        icon:EnableMouse(true)
-        icon:SetScript("OnEnter", function()
-            RaidAssignments:OpenGeneralToolTip(this:GetName())
-        end)
-        icon:SetScript("OnLeave", function() end)   
-        
-        icon.Icon = icon:CreateTexture(nil, "ARTWORK")
-        icon.Icon:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\" .. i .. ".tga")
-        icon.Icon:SetPoint("CENTER", 0,0)
-        icon.Icon:SetWidth(35)
-        icon.Icon:SetHeight(35)
+-- General marks 1-8 using UI-RaidTargetingIcons
+local padding = 5
+for i = 1, 8 do
+    local icon = CreateFrame("Frame", "G"..i, self.generalBg)
+    icon:SetWidth(35)
+    icon:SetHeight(35)
+    icon:SetPoint("TOPLEFT", 50, -75 - ((35 + padding) * (i - 1)))
+    icon:SetFrameStrata("MEDIUM")
+    icon:EnableMouse(true)
+    icon:SetScript("OnEnter", function() RaidAssignments:OpenGeneralToolTip(this:GetName()) end)
+    icon:SetScript("OnLeave", function() end)
+    icon.Icon = icon:CreateTexture(nil, "ARTWORK")
+    icon.Icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+    local r, l, t, b = RaidAssignments:GetMarkPos(i) -- Use same texture coords as tank marks
+    icon.Icon:SetTexCoord(r, l, t, b)
+    icon.Icon:SetPoint("CENTER", 0, 0)
+    icon.Icon:SetWidth(35)
+    icon.Icon:SetHeight(35)
+end
+
+-- Add custom marks 9 and 10 with EditBox below the icon
+for i = 9, 10 do
+    local icon = CreateFrame("Frame", "G"..i, self.generalBg)
+    icon:SetWidth(35)
+    icon:SetHeight(35)
+    -- Adjust position to account for extra space needed for EditBox below
+    icon:SetPoint("TOPLEFT", 50, -75 - ((35 + padding) * (i - 1) + (i - 9) * 30)) -- Extra 30 pixels per custom mark for EditBox
+    icon:SetFrameStrata("MEDIUM")
+    icon:EnableMouse(true)
+    icon:SetScript("OnEnter", function()
+        RaidAssignments:OpenGeneralToolTip(this:GetName())
+    end)
+    icon:SetScript("OnLeave", function() end)
+
+    -- Use custom mark texture
+    icon.Icon = icon:CreateTexture(nil, "ARTWORK")
+    icon.Icon:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\Custom.tga")
+    icon.Icon:SetPoint("CENTER", 0, 0)
+    icon.Icon:SetWidth(35)
+    icon.Icon:SetHeight(35)
+
+    -- Add an EditBox *below the icon* to edit the label for reporting
+    local editBox = CreateFrame("EditBox", "G"..i.."_Edit", self.generalBg, "InputBoxTemplate")
+    editBox:SetWidth(120)
+    editBox:SetHeight(25)
+    editBox:SetPoint("TOPLEFT", icon, "BOTTOMLEFT", 0, -5) -- Position below the icon with 5-pixel gap
+    editBox:SetAutoFocus(false)
+
+    if RaidAssignments.GeneralRealMarks[i] ~= "" then
+        editBox:SetText(RaidAssignments.GeneralRealMarks[i])
+    else
+        editBox:SetText("Custom Mark " .. (i-8))
     end
-   
+
+    editBox:SetScript("OnEnterPressed", function()
+        local text = (this and this:GetText()) or ""
+        RaidAssignments.GeneralRealMarks[i] = text
+        RaidAssignments:UpdateGeneral()
+        RaidAssignments:SendGeneral()
+        this:ClearFocus()
+    end)
+    editBox:SetScript("OnEscapePressed", function()
+        if this then this:ClearFocus() end
+    end)
+end
+
+
+
+
+
+
     self.generalCloseButton = CreateFrame("Button", nil, self.generalBg, "UIPanelCloseButton")
     self.generalCloseButton:SetPoint("TOPLEFT", RaidAssignments.GeneralAssignments:GetWidth()-23, 2)
-    self.generalCloseButton:SetWidth(24)
-    self.generalCloseButton:SetHeight(24)
+    self.generalCloseButton:SetWidth(24) self.generalCloseButton:SetHeight(24)
     self.generalCloseButton:SetFrameStrata("MEDIUM")
-    self.generalCloseButton:SetScript("OnClick", function() 
+    self.generalCloseButton:SetScript("OnClick", function()
         PlaySound("igMainMenuOptionCheckBoxOn")
         RaidAssignments.GeneralToolTip:Hide()
         RaidAssignments.Settings["GeneralAnimation"] = true
         RaidAssignments.Settings["GeneralFrame"] = false
     end)
-    
-    -- Post Marks Button
+
     self.postGeneralButton = CreateFrame("Button", nil, self.generalBg, "UIPanelButtonTemplate")
     self.postGeneralButton:SetPoint("BOTTOM", 0, 10)
-    self.postGeneralButton:SetFrameStrata("MEDIUM")
-    self.postGeneralButton:SetWidth(145)
-    self.postGeneralButton:SetHeight(24)
+    self.postGeneralButton:SetWidth(145) self.postGeneralButton:SetHeight(24)
     self.postGeneralButton:SetText("Post Marks")
-    self.postGeneralButton:SetScript("OnClick", function() 
+    self.postGeneralButton:SetScript("OnClick", function()
         if IsRaidOfficer("player") then
             PlaySound("igMainMenuOptionCheckBoxOn")
-            RaidAssignments:PostGeneralAssignments() 
+            RaidAssignments:PostGeneralAssignments()
         end
     end)
-    
+
     self.generalBg:Hide()
     RaidAssignments.GeneralAssignments:Hide()
     RaidAssignments.Settings["GeneralFrame"] = false
     RaidAssignments.Settings["GeneralSizeX"] = 0
-    RaidAssignments.Settings["GeneralSizeY"] = 0    
+    RaidAssignments.Settings["GeneralSizeY"] = 0
+end
+
+function RaidAssignments:UpdateGeneral()
+    if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
+        -- Initialize GeneralFrames for all marks if not already done
+        for i = 1, 10 do
+            if not RaidAssignments.GeneralFrames[i] then
+                RaidAssignments.GeneralFrames[i] = {}
+            end
+        end
+
+        -- Process each mark (1-10)
+        for i = 1, 10 do
+            -- Get the mark icon frame (G1 to G10)
+            local iconFrame = _G["G" .. i]
+            if iconFrame then
+                -- Hide icon frame if there are assigned players, show otherwise
+                if RaidAssignments.GeneralMarks[i] and table.getn(RaidAssignments.GeneralMarks[i]) > 0 then
+                    iconFrame:Hide()
+                else
+                    iconFrame:Show()
+                end
+            end
+
+            -- Hide all player frames for this mark first
+            for k, v in pairs(RaidAssignments.GeneralFrames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+
+            -- Remove players no longer in raid
+            for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
+                if not RaidAssignments:IsInRaid(v) then
+                    table.remove(RaidAssignments.GeneralMarks[i], k)
+                end
+            end
+            table.sort(RaidAssignments.GeneralMarks[i])
+
+            -- Show frames for assigned players
+            local index = 0
+            for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
+                index = index + 1
+                -- Create frame if it doesn't exist
+                if not RaidAssignments.GeneralFrames[i][v] then
+                    RaidAssignments.GeneralFrames[i][v] = RaidAssignments:AddGeneralFrame(v, i)
+                end
+                local frame = RaidAssignments.GeneralFrames[i][v]
+                frame:SetPoint("RIGHT", 10 + (105 * index), 0)
+                frame.texture:SetWidth(frame:GetWidth() - 4)
+                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(v, "rgb"))
+                frame:Show()
+            end
+        end
+    else
+        -- Hide all frames and clear marks if not in raid
+        for i = 1, 10 do
+            local iconFrame = _G["G" .. i]
+            if iconFrame then
+                iconFrame:Show()
+            end
+            for k, v in pairs(RaidAssignments.GeneralFrames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+            RaidAssignments.GeneralMarks[i] = {}
+        end
+    end
 end
 
 function RaidAssignments:WhisperAssignments()
@@ -1641,6 +1760,15 @@ function RaidAssignments:AddGeneral(name, mark)
     if not RaidAssignments.GeneralMarks[mark] then
         RaidAssignments.GeneralMarks[mark] = {}
     end
+
+    -- Prevent assigning the same player twice in the same mark
+    for _, v in pairs(RaidAssignments.GeneralMarks[mark]) do
+        if v == name then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to " .. RaidAssignments.GeneralRealMarks[mark])
+            return
+        end
+    end
+
     local index = table.getn(RaidAssignments.GeneralMarks[mark]) + 1
     if index <= 5 then
         RaidAssignments.GeneralFrames[mark][name] = RaidAssignments.GeneralFrames[mark][name] or RaidAssignments:AddGeneralFrame(name, mark)
@@ -1649,6 +1777,8 @@ function RaidAssignments:AddGeneral(name, mark)
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
         table.insert(RaidAssignments.GeneralMarks[mark], name)
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: All slots are already filled for " .. RaidAssignments.GeneralRealMarks[mark])
     end
 end
 
@@ -2326,7 +2456,7 @@ function RaidAssignments:PostGeneralAssignments()
     local n = false
 
     if RaidAssignments_Settings["usecolors"] then
-        for i = 1, 8 do
+        for i = 1, 10 do -- Changed from 8 to 10 to include custom marks
             if RaidAssignments.GeneralMarks[i] ~= nil and table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
                 n = true
             end
@@ -2334,12 +2464,17 @@ function RaidAssignments:PostGeneralAssignments()
         if n then
             SendChatMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
-            while i <= 8 do
+            while i <= 10 do -- Changed from 8 to 10
                 local text = RaidAssignments.GeneralRealMarks[i]
                 if table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
+                    -- Ensure custom marks have a valid label
+                    if i >= 9 and (text == "" or text == nil) then
+                        text = "Custom Mark " .. (i - 8)
+                    end
+                    text = text .. ": "
                     for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
                         if k == 1 then
-                            text = text .. ": " .. RaidAssignments:GetClassColors(v, "cff")
+                            text = text .. RaidAssignments:GetClassColors(v, "cff")
                         else
                             text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
                         end
@@ -2353,7 +2488,7 @@ function RaidAssignments:PostGeneralAssignments()
             end
         end
     else
-        for i = 1, 8 do
+        for i = 1, 10 do -- Changed from 8 to 10
             if RaidAssignments.GeneralMarks[i] ~= nil and table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
                 n = true
             end
@@ -2361,12 +2496,17 @@ function RaidAssignments:PostGeneralAssignments()
         if n then
             SendChatMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
-            while i <= 8 do
+            while i <= 10 do -- Changed from 8 to 10
                 local text = RaidAssignments.GeneralRealMarks[i]
                 if table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
+                    -- Ensure custom marks have a valid label
+                    if i >= 9 and (text == "" or text == nil) then
+                        text = "Custom Mark " .. (i - 8)
+                    end
+                    text = text .. ": "
                     for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
                         if k == 1 then
-                            text = text .. ": " .. v
+                            text = text .. v
                         else
                             text = text .. ", " .. v
                         end
@@ -2381,10 +2521,14 @@ function RaidAssignments:PostGeneralAssignments()
         end
     end
     if RaidAssignments_Settings["useWhisper"] then
-        for i = 1, 8 do
+        for i = 1, 10 do -- Changed from 8 to 10
             for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
                 if RaidAssignments:IsInRaid(v) then
-                    local text = "You are assigned to " .. RaidAssignments.GeneralRealMarks[i] .. " (slot " .. k .. ")"
+                    local markText = RaidAssignments.GeneralRealMarks[i]
+                    if i >= 9 and (markText == "" or markText == nil) then
+                        markText = "Custom Mark " .. (i - 8)
+                    end
+                    local text = "You are assigned to " .. markText .. " (slot " .. k .. ")"
                     SendChatMessage(text, "WHISPER", nil, v)
                 end
             end

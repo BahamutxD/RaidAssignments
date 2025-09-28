@@ -476,6 +476,88 @@ function RaidAssignments:ConfigMainFrame()
         RaidAssignments.Settings["Animation"] = true
         RaidAssignments.Settings["MainFrame"] = false
     end)
+	
+    -- KT Image Button
+    self.ktButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.ktButton:SetPoint("BOTTOM", -400, 10) -- left of Post Tank Assignments
+    self.ktButton:SetWidth(72)  -- 50% of original 145
+    self.ktButton:SetHeight(24)
+    self.ktButton:SetText("KT Image")
+    self.ktButton:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        if not RaidAssignments.KTFrame then
+            RaidAssignments.KTFrame = CreateFrame("Frame", "RaidAssignmentsKTFrame", UIParent)
+            RaidAssignments.KTFrame:SetFrameStrata("DIALOG")
+            RaidAssignments.KTFrame:SetWidth(512)
+            RaidAssignments.KTFrame:SetHeight(512)
+            RaidAssignments.KTFrame:SetPoint("CENTER", 0, 0)
+            RaidAssignments.KTFrame:EnableMouse(true)
+            RaidAssignments.KTFrame:SetMovable(true)
+            RaidAssignments.KTFrame:RegisterForDrag("LeftButton")
+            RaidAssignments.KTFrame:SetScript("OnDragStart", function() this:StartMoving() end)
+            RaidAssignments.KTFrame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+
+            -- Image
+            RaidAssignments.KTFrame.texture = RaidAssignments.KTFrame:CreateTexture(nil, "ARTWORK")
+            RaidAssignments.KTFrame.texture:SetAllPoints(RaidAssignments.KTFrame)
+            RaidAssignments.KTFrame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\KT.tga")
+
+            -- Close Button
+            RaidAssignments.KTFrame.close = CreateFrame("Button", nil, RaidAssignments.KTFrame, "UIPanelCloseButton")
+            RaidAssignments.KTFrame.close:SetPoint("TOPRIGHT", RaidAssignments.KTFrame, "TOPRIGHT")
+            RaidAssignments.KTFrame.close:SetScript("OnClick", function()
+                RaidAssignments.KTFrame:Hide()
+            end)
+        end
+
+        if RaidAssignments.KTFrame:IsShown() then
+            RaidAssignments.KTFrame:Hide()
+        else
+            RaidAssignments.KTFrame:Show()
+        end
+    end)
+
+    -- 4H Image Button
+    self.fourhButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.fourhButton:SetPoint("LEFT", self.ktButton, "RIGHT", 10, 0) -- right next to KT button
+    self.fourhButton:SetWidth(72)  -- 50% of original 145
+    self.fourhButton:SetHeight(24)
+    self.fourhButton:SetText("4H Image")
+    self.fourhButton:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        if not RaidAssignments.FourHFrame then
+            RaidAssignments.FourHFrame = CreateFrame("Frame", "RaidAssignmentsFourHFrame", UIParent)
+            RaidAssignments.FourHFrame:SetFrameStrata("DIALOG")
+            RaidAssignments.FourHFrame:SetWidth(512)
+            RaidAssignments.FourHFrame:SetHeight(512)
+            RaidAssignments.FourHFrame:SetPoint("CENTER", 0, 0)
+            RaidAssignments.FourHFrame:EnableMouse(true)
+            RaidAssignments.FourHFrame:SetMovable(true)
+            RaidAssignments.FourHFrame:RegisterForDrag("LeftButton")
+            RaidAssignments.FourHFrame:SetScript("OnDragStart", function() this:StartMoving() end)
+            RaidAssignments.FourHFrame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+
+            -- Image
+            RaidAssignments.FourHFrame.texture = RaidAssignments.FourHFrame:CreateTexture(nil, "ARTWORK")
+            RaidAssignments.FourHFrame.texture:SetAllPoints(RaidAssignments.FourHFrame)
+            RaidAssignments.FourHFrame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\4H.tga")
+
+            -- Close Button
+            RaidAssignments.FourHFrame.close = CreateFrame("Button", nil, RaidAssignments.FourHFrame, "UIPanelCloseButton")
+            RaidAssignments.FourHFrame.close:SetPoint("TOPRIGHT", RaidAssignments.FourHFrame, "TOPRIGHT")
+            RaidAssignments.FourHFrame.close:SetScript("OnClick", function()
+                RaidAssignments.FourHFrame:Hide()
+            end)
+        end
+
+        if RaidAssignments.FourHFrame:IsShown() then
+            RaidAssignments.FourHFrame:Hide()
+        else
+            RaidAssignments.FourHFrame:Show()
+        end
+    end)
+
+
     
     -- Post Tank Assignments Button
     self.tankButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")

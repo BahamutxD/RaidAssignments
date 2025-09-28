@@ -869,9 +869,7 @@ for i = 1, 8 do
     icon:SetScript("OnEnter", function() RaidAssignments:OpenGeneralToolTip(this:GetName()) end)
     icon:SetScript("OnLeave", function() end)
     icon.Icon = icon:CreateTexture(nil, "ARTWORK")
-    icon.Icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
-    local r, l, t, b = RaidAssignments:GetMarkPos(i) -- Use same texture coords as tank marks
-    icon.Icon:SetTexCoord(r, l, t, b)
+    icon.Icon:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\" .. i .. ".tga")
     icon.Icon:SetPoint("CENTER", 0, 0)
     icon.Icon:SetWidth(35)
     icon.Icon:SetHeight(35)
@@ -972,7 +970,14 @@ function RaidAssignments:UpdateGeneral()
             local iconFrame = _G["G" .. i]
             if iconFrame then
                 -- Hide icon frame if there are assigned players, show otherwise
-                if RaidAssignments.GeneralMarks[i] and table.getn(RaidAssignments.GeneralMarks[i]) > 0 then
+                local hasAssignments = false
+                for k = 1, 5 do
+                    if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
+                        hasAssignments = true
+                        break
+                    end
+                end
+                if hasAssignments then
                     iconFrame:Hide()
                 else
                     iconFrame:Show()
@@ -987,26 +992,27 @@ function RaidAssignments:UpdateGeneral()
             end
 
             -- Remove players no longer in raid
-            for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
-                if not RaidAssignments:IsInRaid(v) then
-                    table.remove(RaidAssignments.GeneralMarks[i], k)
+            for k = 1, 5 do
+                local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
+                if v and not RaidAssignments:IsInRaid(v) then
+                    RaidAssignments.GeneralMarks[i][k] = nil
                 end
             end
-            table.sort(RaidAssignments.GeneralMarks[i])
 
-            -- Show frames for assigned players
-            local index = 0
-            for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
-                index = index + 1
-                -- Create frame if it doesn't exist
-                if not RaidAssignments.GeneralFrames[i][v] then
-                    RaidAssignments.GeneralFrames[i][v] = RaidAssignments:AddGeneralFrame(v, i)
+            -- Show frames for assigned players in correct slots
+            for slot = 1, 5 do
+                local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][slot]
+                if v then
+                    -- Create frame if it doesn't exist
+                    if not RaidAssignments.GeneralFrames[i][v] then
+                        RaidAssignments.GeneralFrames[i][v] = RaidAssignments:AddGeneralFrame(v, i)
+                    end
+                    local frame = RaidAssignments.GeneralFrames[i][v]
+                    frame:SetPoint("RIGHT", 10 + (105 * slot), 0)
+                    frame.texture:SetWidth(frame:GetWidth() - 4)
+                    frame.texture:SetVertexColor(RaidAssignments:GetClassColors(v, "rgb"))
+                    frame:Show()
                 end
-                local frame = RaidAssignments.GeneralFrames[i][v]
-                frame:SetPoint("RIGHT", 10 + (105 * index), 0)
-                frame.texture:SetWidth(frame:GetWidth() - 4)
-                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(v, "rgb"))
-                frame:Show()
             end
         end
     else
@@ -1665,7 +1671,8 @@ function RaidAssignments:OpenGeneralToolTip(frameName)
             end
             if name and class then
                 local f = false
-                for j = 1, 8 do
+                -- Check if player is already assigned to ANY general mark (1-10)
+                for j = 1, 10 do
                     for k, v in pairs(RaidAssignments.GeneralMarks[j]) do
                         if name == v then
                             f = true
@@ -1761,22 +1768,32 @@ function RaidAssignments:AddGeneral(name, mark)
         RaidAssignments.GeneralMarks[mark] = {}
     end
 
-    -- Prevent assigning the same player twice in the same mark
-    for _, v in pairs(RaidAssignments.GeneralMarks[mark]) do
-        if v == name then
-            DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to " .. RaidAssignments.GeneralRealMarks[mark])
-            return
+    -- Prevent assigning the same player to ANY general mark (1-10)
+    for i = 1, 10 do
+        for _, v in pairs(RaidAssignments.GeneralMarks[i]) do
+            if v == name then
+                DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to " .. RaidAssignments.GeneralRealMarks[i])
+                return
+            end
         end
     end
 
-    local index = table.getn(RaidAssignments.GeneralMarks[mark]) + 1
-    if index <= 5 then
+    -- Find the first available slot (handle gaps from removed marks)
+    local slot = nil
+    for i = 1, 5 do
+        if not RaidAssignments.GeneralMarks[mark][i] then
+            slot = i
+            break
+        end
+    end
+
+    if slot then
         RaidAssignments.GeneralFrames[mark][name] = RaidAssignments.GeneralFrames[mark][name] or RaidAssignments:AddGeneralFrame(name, mark)
         local frame = RaidAssignments.GeneralFrames[mark][name]
-        frame:SetPoint("RIGHT", 10 + (105 * index), 0)
+        frame:SetPoint("RIGHT", 10 + (105 * slot), 0)
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
-        table.insert(RaidAssignments.GeneralMarks[mark], name)
+        RaidAssignments.GeneralMarks[mark][slot] = name
     else
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: All slots are already filled for " .. RaidAssignments.GeneralRealMarks[mark])
     end
@@ -1999,14 +2016,14 @@ function RaidAssignments:AddGeneralFrame(name, mark)
 
     frame:SetScript("OnClick", function()
         if IsRaidOfficer("player") then
-            for k, v in pairs(RaidAssignments.GeneralMarks[mark]) do
-                if v == name then
-                    table.remove(RaidAssignments.GeneralMarks[mark], k)
-                    table.sort(RaidAssignments.GeneralMarks[mark])
+            for slot = 1, 5 do
+                if RaidAssignments.GeneralMarks[mark] and RaidAssignments.GeneralMarks[mark][slot] == name then
+                    RaidAssignments.GeneralMarks[mark][slot] = nil
                     this:Hide()
                     RaidAssignments.GeneralFrames[mark][name] = nil -- clear cached frame
                     RaidAssignments:UpdateGeneral()
                     RaidAssignments:SendGeneral() -- Broadcast the updated GeneralMarks
+                    break
                 end
             end
         end
@@ -2016,7 +2033,6 @@ function RaidAssignments:AddGeneralFrame(name, mark)
     frame:SetScript("OnLeave", UnitFrame_OnLeave)
     return frame
 end
-
 function RaidAssignments:PostAssignments()
     local chan = "RAID" -- Default to RAID channel
     local chanNum = nil
@@ -2457,31 +2473,60 @@ function RaidAssignments:PostGeneralAssignments()
 
     if RaidAssignments_Settings["usecolors"] then
         for i = 1, 10 do -- Changed from 8 to 10 to include custom marks
-            if RaidAssignments.GeneralMarks[i] ~= nil and table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
-                n = true
+            if RaidAssignments.GeneralMarks[i] ~= nil then
+                local hasAssignments = false
+                for k = 1, 5 do
+                    if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
+                        hasAssignments = true
+                        n = true
+                        break
+                    end
+                end
             end
         end
         if n then
             SendChatMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
             while i <= 10 do -- Changed from 8 to 10
-                local text = RaidAssignments.GeneralRealMarks[i]
-                if table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
-                    -- Ensure custom marks have a valid label
-                    if i >= 9 and (text == "" or text == nil) then
-                        text = "Custom Mark " .. (i - 8)
+                local hasAssignments = false
+                for k = 1, 5 do
+                    if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
+                        hasAssignments = true
+                        break
                     end
-                    text = text .. ": "
-                    for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
-                        if k == 1 then
-                            text = text .. RaidAssignments:GetClassColors(v, "cff")
+                end
+                
+                if hasAssignments then
+                    -- Get the mark text from the input box for custom marks, or use predefined names
+                    local markText = RaidAssignments.GeneralRealMarks[i]
+                    if i >= 9 then
+                        -- For custom marks 9 and 10, get the text from the EditBox
+                        local editBox = _G["G"..i.."_Edit"]
+                        if editBox then
+                            local editText = editBox:GetText()
+                            if editText and editText ~= "" then
+                                markText = editText
+                            else
+                                markText = "Custom Mark " .. (i - 8)
+                            end
                         else
-                            text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
-                        end
-                        if k == table.getn(RaidAssignments.GeneralMarks[i]) then
-                            text = text .. "."
+                            markText = "Custom Mark " .. (i - 8)
                         end
                     end
+                    
+                    local text = markText .. ": "
+                    local first = true
+                    for k = 1, 5 do
+                        local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
+                        if v then
+                            if not first then
+                                text = text .. ", "
+                            end
+                            text = text .. RaidAssignments:GetClassColors(v, "cff")
+                            first = false
+                        end
+                    end
+                    text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i + 1
@@ -2489,31 +2534,60 @@ function RaidAssignments:PostGeneralAssignments()
         end
     else
         for i = 1, 10 do -- Changed from 8 to 10
-            if RaidAssignments.GeneralMarks[i] ~= nil and table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
-                n = true
+            if RaidAssignments.GeneralMarks[i] ~= nil then
+                local hasAssignments = false
+                for k = 1, 5 do
+                    if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
+                        hasAssignments = true
+                        n = true
+                        break
+                    end
+                end
             end
         end
         if n then
             SendChatMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
             while i <= 10 do -- Changed from 8 to 10
-                local text = RaidAssignments.GeneralRealMarks[i]
-                if table.getn(RaidAssignments.GeneralMarks[i]) ~= 0 then
-                    -- Ensure custom marks have a valid label
-                    if i >= 9 and (text == "" or text == nil) then
-                        text = "Custom Mark " .. (i - 8)
+                local hasAssignments = false
+                for k = 1, 5 do
+                    if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
+                        hasAssignments = true
+                        break
                     end
-                    text = text .. ": "
-                    for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
-                        if k == 1 then
-                            text = text .. v
+                end
+                
+                if hasAssignments then
+                    -- Get the mark text from the input box for custom marks, or use predefined names
+                    local markText = RaidAssignments.GeneralRealMarks[i]
+                    if i >= 9 then
+                        -- For custom marks 9 and 10, get the text from the EditBox
+                        local editBox = _G["G"..i.."_Edit"]
+                        if editBox then
+                            local editText = editBox:GetText()
+                            if editText and editText ~= "" then
+                                markText = editText
+                            else
+                                markText = "Custom Mark " .. (i - 8)
+                            end
                         else
-                            text = text .. ", " .. v
-                        end
-                        if k == table.getn(RaidAssignments.GeneralMarks[i]) then
-                            text = text .. "."
+                            markText = "Custom Mark " .. (i - 8)
                         end
                     end
+                    
+                    local text = markText .. ": "
+                    local first = true
+                    for k = 1, 5 do
+                        local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
+                        if v then
+                            if not first then
+                                text = text .. ", "
+                            end
+                            text = text .. v
+                            first = false
+                        end
+                    end
+                    text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i + 1
@@ -2522,11 +2596,24 @@ function RaidAssignments:PostGeneralAssignments()
     end
     if RaidAssignments_Settings["useWhisper"] then
         for i = 1, 10 do -- Changed from 8 to 10
-            for k, v in pairs(RaidAssignments.GeneralMarks[i]) do
-                if RaidAssignments:IsInRaid(v) then
+            for k = 1, 5 do
+                local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
+                if v and RaidAssignments:IsInRaid(v) then
+                    -- Get the mark text from the input box for custom marks, or use predefined names
                     local markText = RaidAssignments.GeneralRealMarks[i]
-                    if i >= 9 and (markText == "" or markText == nil) then
-                        markText = "Custom Mark " .. (i - 8)
+                    if i >= 9 then
+                        -- For custom marks 9 and 10, get the text from the EditBox
+                        local editBox = _G["G"..i.."_Edit"]
+                        if editBox then
+                            local editText = editBox:GetText()
+                            if editText and editText ~= "" then
+                                markText = editText
+                            else
+                                markText = "Custom Mark " .. (i - 8)
+                            end
+                        else
+                            markText = "Custom Mark " .. (i - 8)
+                        end
                     end
                     local text = "You are assigned to " .. markText .. " (slot " .. k .. ")"
                     SendChatMessage(text, "WHISPER", nil, v)

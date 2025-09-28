@@ -208,7 +208,7 @@ function RaidAssignments:OnEvent()
         RaidAssignments:UpdateHeals()
         RaidAssignments:UpdateGeneral()
     elseif event == "CHAT_MSG_ADDON" then
-        if (arg1 == "TankAssignmentsMarks" or arg1 == "HealAssignmentsMarks" or arg1 == "RaidAssignmentsGeneralMarks" or string.sub(arg1, 1, 15) == "RaidAssignments") and UnitName("player") ~= arg4 then
+        if (arg1 == "TankAssignmentsMarks" or arg1 == "HealAssignmentsMarks" or arg1 == "RaidAssignmentsGeneralMarks" or arg1 == "RaidAssignmentsCustomLabels" or string.sub(arg1, 1, 15) == "RaidAssignments") and UnitName("player") ~= arg4 then
             if arg1 == "TankAssignmentsMarks" then
                 RaidAssignments.Marks = {
                     [1] = {}, [2] = {}, [3] = {}, [4] = {}, [5] = {}, [6] = {}, [7] = {}, [8] = {},
@@ -219,38 +219,90 @@ function RaidAssignments:OnEvent()
                 end
                 RaidAssignments:UpdateTanks()
             elseif arg1 == "HealAssignmentsMarks" then
-				RaidAssignments.HealMarks = {
-					[1] = {nil, nil, nil, nil}, [2] = {nil, nil, nil, nil}, [3] = {nil, nil, nil, nil},
-					[4] = {nil, nil, nil, nil}, [5] = {nil, nil, nil, nil}, [6] = {nil, nil, nil, nil},
-					[7] = {nil, nil, nil, nil}, [8] = {nil, nil, nil, nil}, [9] = {nil, nil, nil, nil},
-					[10] = {nil, nil, nil, nil}, [11] = {nil, nil, nil, nil}, [12] = {nil, nil, nil, nil},
-				}
-				-- parse mark-slot-name triplets
-				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^%d]+)") do
-					mark = tonumber(mark)
-					slot = tonumber(slot)
-					if mark and slot and slot <= 4 then
-						RaidAssignments.HealMarks[mark][slot] = name
-					end
-				end
-				RaidAssignments:UpdateHeals()
+                RaidAssignments.HealMarks = {
+                    [1] = {nil, nil, nil, nil}, [2] = {nil, nil, nil, nil}, [3] = {nil, nil, nil, nil},
+                    [4] = {nil, nil, nil, nil}, [5] = {nil, nil, nil, nil}, [6] = {nil, nil, nil, nil},
+                    [7] = {nil, nil, nil, nil}, [8] = {nil, nil, nil, nil}, [9] = {nil, nil, nil, nil},
+                    [10] = {nil, nil, nil, nil}, [11] = {nil, nil, nil, nil}, [12] = {nil, nil, nil, nil},
+                }
+                -- Parse heal assignments with underscore separator
+                local pos = 1
+                while pos <= string.len(arg2) do
+                    local markEnd = string.find(arg2, "_", pos)
+                    if not markEnd then break end
+                    local slotEnd = string.find(arg2, "_", markEnd + 1)
+                    if not slotEnd then break end
+                    local nameEnd = string.find(arg2, ",", slotEnd + 1)
+                    if not nameEnd then nameEnd = string.len(arg2) + 1 end
+                    
+                    local mark = tonumber(string.sub(arg2, pos, markEnd - 1))
+                    local slot = tonumber(string.sub(arg2, markEnd + 1, slotEnd - 1))
+                    local name = string.sub(arg2, slotEnd + 1, nameEnd - 1)
+                    
+                    if mark and slot and slot <= 4 and name and name ~= "" then
+                        RaidAssignments.HealMarks[mark][slot] = name
+                    end
+                    pos = nameEnd + 1
+                end
+                RaidAssignments:UpdateHeals()
             elseif arg1 == "RaidAssignmentsGeneralMarks" then
-				RaidAssignments.GeneralMarks = {
-					[1] = {}, [2] = {}, [3] = {}, [4] = {},
-					[5] = {}, [6] = {}, [7] = {}, [8] = {},
-				}
-				-- allow trailing or missing ";"
-				for mark, slot, name in string.gmatch(arg2, "(%d+)%-(%d+)([^;]+);?") do  -- Change | to ;
-					mark = tonumber(mark)
-					slot = tonumber(slot)
-					if mark and slot and name then
-						RaidAssignments.GeneralMarks[mark][slot] = name
-					end
+                -- Initialize ALL marks including custom ones
+                for i = 1, 10 do
+                    if not RaidAssignments.GeneralMarks[i] then
+                        RaidAssignments.GeneralMarks[i] = {}
+                    else
+                        -- Clear existing assignments for this mark
+                        RaidAssignments.GeneralMarks[i] = {}
+                    end
+                end
+                
+                -- Parse general assignments with underscore separator
+                local pos = 1
+                while pos <= string.len(arg2) do
+                    local markEnd = string.find(arg2, "_", pos)
+                    if not markEnd then break end
+                    local slotEnd = string.find(arg2, "_", markEnd + 1)
+                    if not slotEnd then break end
+                    local nameEnd = string.find(arg2, ",", slotEnd + 1)
+                    if not nameEnd then nameEnd = string.len(arg2) + 1 end
+                    
+                    local mark = tonumber(string.sub(arg2, pos, markEnd - 1))
+                    local slot = tonumber(string.sub(arg2, markEnd + 1, slotEnd - 1))
+                    local name = string.sub(arg2, slotEnd + 1, nameEnd - 1)
+                    
+                    if mark and slot and name and name ~= "" and mark >= 1 and mark <= 10 then
+                        if not RaidAssignments.GeneralMarks[mark] then
+                            RaidAssignments.GeneralMarks[mark] = {}
+                        end
+                        RaidAssignments.GeneralMarks[mark][slot] = name
+                    end
+                    pos = nameEnd + 1
+                end
+                RaidAssignments:UpdateGeneral()
+            elseif arg1 == "RaidAssignmentsCustomLabels" then
+    -- Parse custom mark labels with underscore separator
+	local pos = 1
+		while pos <= string.len(arg2) do
+			local markEnd = string.find(arg2, "_", pos)
+			if not markEnd then break end
+			local labelEnd = string.find(arg2, ",", markEnd + 1)
+			if not labelEnd then labelEnd = string.len(arg2) + 1 end
+			
+			local mark = tonumber(string.sub(arg2, pos, markEnd - 1))
+			local label = string.sub(arg2, markEnd + 1, labelEnd - 1)
+			
+			if mark and (mark == 9 or mark == 10) and label ~= nil then  -- Changed: Allow empty string to clear
+				RaidAssignments.GeneralRealMarks[mark] = label
+				-- Update the EditBox if it exists
+				local editBox = _G["G"..mark.."_Edit"]
+				if editBox then
+					editBox:SetText(label)
 				end
-				RaidAssignments:UpdateGeneral()
-            elseif string.sub(arg1, 7, string.len(arg1)) == "Ignore" then
-                -- Handle ignore case if needed
-            end
+			end
+			pos = labelEnd + 1
+		end
+		RaidAssignments:UpdateGeneral()  -- Add this to refresh UI after label sync
+	end
         end
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         if UnitExists("mouseover") then
@@ -909,22 +961,19 @@ for i = 9, 10 do
         editBox:SetText("Custom Mark " .. (i-8))
     end
 
+    local markIndex = i  -- Capture the value of i for this iteration
     editBox:SetScript("OnEnterPressed", function()
         local text = (this and this:GetText()) or ""
-        RaidAssignments.GeneralRealMarks[i] = text
+        RaidAssignments.GeneralRealMarks[markIndex] = text
         RaidAssignments:UpdateGeneral()
         RaidAssignments:SendGeneral()
+        RaidAssignments:SendCustomMarkLabels()  -- Sync labels
         this:ClearFocus()
     end)
     editBox:SetScript("OnEscapePressed", function()
         if this then this:ClearFocus() end
     end)
 end
-
-
-
-
-
 
     self.generalCloseButton = CreateFrame("Button", nil, self.generalBg, "UIPanelCloseButton")
     self.generalCloseButton:SetPoint("TOPLEFT", RaidAssignments.GeneralAssignments:GetWidth()-23, 2)
@@ -969,19 +1018,7 @@ function RaidAssignments:UpdateGeneral()
             -- Get the mark icon frame (G1 to G10)
             local iconFrame = _G["G" .. i]
             if iconFrame then
-                -- Hide icon frame if there are assigned players, show otherwise
-                local hasAssignments = false
-                for k = 1, 5 do
-                    if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
-                        hasAssignments = true
-                        break
-                    end
-                end
-                if hasAssignments then
-                    iconFrame:Hide()
-                else
-                    iconFrame:Show()
-                end
+                iconFrame:Show()  -- Always show the icon, regardless of assignments
             end
 
             -- Hide all player frames for this mark first
@@ -1031,7 +1068,6 @@ function RaidAssignments:UpdateGeneral()
         end
     end
 end
-
 function RaidAssignments:WhisperAssignments()
     if not IsRaidOfficer("player") then
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: You must be a raid officer to whisper assignments")
@@ -1452,47 +1488,6 @@ function RaidAssignments:UpdateHeals()
     end
 end
 
-function RaidAssignments:UpdateGeneral()
-    if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
-        for i=1,8 do
-            -- Hide old frames
-            for k,v in pairs(RaidAssignments.GeneralFrames[i]) do
-                v:Hide()
-            end
-            -- Remove players not in raid anymore
-            for k,v in pairs(RaidAssignments.GeneralMarks[i]) do
-                if not RaidAssignments:IsInRaid(v) then    
-                    table.remove(RaidAssignments.GeneralMarks[i],k)
-                    table.sort(RaidAssignments.GeneralMarks[i])    
-                end
-            end
-            -- Show frames for general assignments
-            local index = 0
-            for k,v in pairs(RaidAssignments.GeneralMarks[i]) do
-                index = index + 1
-                RaidAssignments.GeneralFrames[i][v] = RaidAssignments.GeneralFrames[i][v] or RaidAssignments:AddGeneralFrame(v,i)
-                local frame = RaidAssignments.GeneralFrames[i][v]
-                frame:SetPoint("RIGHT", 10 + (105 * index), 0)
-
-                -- Always full width
-                frame.texture:SetWidth(frame:GetWidth() - 4)
-
-                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(v, "rgb"))
-                frame:Show()
-            end
-        end
-    else
-        for i=1,8 do
-            for k,v in pairs(RaidAssignments.GeneralFrames[i]) do
-                if v:IsVisible() then
-                    v:Hide()
-                end
-            end
-            RaidAssignments.GeneralMarks[i] = {}
-        end
-    end
-end
-
 function RaidAssignments:SendTanks()
     if IsRaidOfficer("player") then
         local sendstring = ""
@@ -1514,14 +1509,14 @@ function RaidAssignments:SendHeals()
             for slot = 1, 4 do
                 local v = RaidAssignments.HealMarks[mark][slot]
                 if v then
-                    -- include slot index in the string
-                    sendstring = sendstring .. mark .. "-" .. slot .. v
+                    -- Use underscore separators
+                    sendstring = sendstring .. mark .. "_" .. slot .. "_" .. v .. ","
                 end
             end
         end
         SendAddonMessage("HealAssignmentsMarks", sendstring, "RAID")
-        end
     end
+end
 	
 function RaidAssignments:SanitizeName(name)
     if not name then return "" end
@@ -1533,11 +1528,13 @@ end
 function RaidAssignments:SendGeneral()
     if IsRaidOfficer("player") then
         local sendstring = ""
-        for mark = 1, 8 do
-            -- use pairs instead of ipairs (works even if slots are sparse)
-            for slot, v in pairs(RaidAssignments.GeneralMarks[mark]) do
-                if v then
-                    sendstring = sendstring .. mark .. "-" .. slot .. v .. ";"  -- Change | to ;
+        for mark = 1, 10 do
+            if RaidAssignments.GeneralMarks[mark] then
+                for slot, v in pairs(RaidAssignments.GeneralMarks[mark]) do
+                    if v and type(slot) == "number" then
+                        -- Use simple concatenation without special characters
+                        sendstring = sendstring .. mark .. "_" .. slot .. "_" .. v .. ","
+                    end
                 end
             end
         end
@@ -1764,21 +1761,25 @@ end
 
 function RaidAssignments:AddGeneral(name, mark)
     mark = tonumber(mark)
+    
+    -- Ensure the mark exists in the table
     if not RaidAssignments.GeneralMarks[mark] then
         RaidAssignments.GeneralMarks[mark] = {}
     end
 
     -- Prevent assigning the same player to ANY general mark (1-10)
     for i = 1, 10 do
-        for _, v in pairs(RaidAssignments.GeneralMarks[i]) do
-            if v == name then
-                DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to " .. RaidAssignments.GeneralRealMarks[i])
-                return
+        if RaidAssignments.GeneralMarks[i] then
+            for _, v in pairs(RaidAssignments.GeneralMarks[i]) do
+                if v == name then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to " .. (RaidAssignments.GeneralRealMarks[i] or "a mark"))
+                    return
+                end
             end
         end
     end
 
-    -- Find the first available slot (handle gaps from removed marks)
+    -- Find the first available slot
     local slot = nil
     for i = 1, 5 do
         if not RaidAssignments.GeneralMarks[mark][i] then
@@ -1794,8 +1795,11 @@ function RaidAssignments:AddGeneral(name, mark)
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
         RaidAssignments.GeneralMarks[mark][slot] = name
+        
+        -- Send updates
+        RaidAssignments:SendGeneral()
     else
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: All slots are already filled for " .. RaidAssignments.GeneralRealMarks[mark])
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: All slots are already filled for " .. (RaidAssignments.GeneralRealMarks[mark] or "this mark"))
     end
 end
 
@@ -1830,22 +1834,23 @@ function RaidAssignments:AddToolTipFrame(name, tooltip)
     frame.name:SetShadowOffset(1, -1)
     frame.name:SetText(name)
     
-    frame:SetScript("OnClick", function()
+    -- In the AddToolTipFrame function, update the OnClick script:
+	frame:SetScript("OnClick", function()
 		if IsRaidOfficer("player") then
 			this:Hide()
 			if tooltip == RaidAssignments.ToolTip then
 				RaidAssignments:AddTank(this:GetName(), RaidAssignments.Settings["active"])
 				RaidAssignments:OpenToolTip("T"..RaidAssignments.Settings["active"])
+				RaidAssignments:SendTanks()
 			elseif tooltip == RaidAssignments.HealToolTip then
 				RaidAssignments:AddHeal(this:GetName(), RaidAssignments.Settings["active_heal"])
 				RaidAssignments:OpenHealToolTip("H"..RaidAssignments.Settings["active_heal"])
+				RaidAssignments:SendHeals()
 			elseif tooltip == RaidAssignments.GeneralToolTip then
 				RaidAssignments:AddGeneral(this:GetName(), RaidAssignments.Settings["active_general"])
 				RaidAssignments:OpenGeneralToolTip("G"..RaidAssignments.Settings["active_general"])
+				RaidAssignments:SendGeneral()
 			end
-			RaidAssignments:SendTanks()
-			RaidAssignments:SendHeals()
-			RaidAssignments:SendGeneral()  -- ADD THIS LINE
 		end
 	end)
     frame.unit = unit
@@ -1895,19 +1900,20 @@ function RaidAssignments:AddTankFrame(name, mark)
     end
 
     frame:SetScript("OnClick", function()
-		if IsRaidOfficer("player") then
-			for k, v in pairs(RaidAssignments.GeneralMarks[mark]) do
-				if v == name then
-					table.remove(RaidAssignments.GeneralMarks[mark], k)
-					table.sort(RaidAssignments.GeneralMarks[mark])
-					this:Hide()
-					RaidAssignments.GeneralFrames[mark][name] = nil -- clear cached frame
-					RaidAssignments:UpdateGeneral()
-				end
-			end
-			RaidAssignments:SendGeneral()  -- ADD THIS LINE
-		end
-	end)
+        if IsRaidOfficer("player") then
+            -- Remove from tank assignments
+            for k, v in pairs(RaidAssignments.Marks[mark]) do
+                if v == name then
+                    table.remove(RaidAssignments.Marks[mark], k)
+                    this:Hide()
+                    RaidAssignments.Frames[mark][name] = nil -- clear cached frame
+                    RaidAssignments:UpdateTanks()
+                    RaidAssignments:SendTanks()
+                    break
+                end
+            end
+        end
+    end)
     frame.unit = unit
     frame:SetScript("OnEnter", UnitFrame_OnEnter)
     frame:SetScript("OnLeave", UnitFrame_OnLeave)
@@ -2621,5 +2627,17 @@ function RaidAssignments:PostGeneralAssignments()
             end
         end
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Whispered general assignments to players")
+    end
+end
+
+function RaidAssignments:SendCustomMarkLabels()
+    if IsRaidOfficer("player") then
+        local sendstring = ""
+        for i = 9, 10 do
+            local label = RaidAssignments.GeneralRealMarks[i] or ""
+            -- Use simple format without pipe characters
+            sendstring = sendstring .. i .. "_" .. label .. ","
+        end
+        SendAddonMessage("RaidAssignmentsCustomLabels", sendstring, "RAID")
     end
 end

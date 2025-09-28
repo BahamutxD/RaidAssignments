@@ -986,8 +986,28 @@ end
         RaidAssignments.Settings["GeneralFrame"] = false
     end)
 
+    -- Button to open Raid Assignments window
+    self.openRaidAssignmentsButton = CreateFrame("Button", nil, self.generalBg, "UIPanelButtonTemplate")
+    self.openRaidAssignmentsButton:SetPoint("BOTTOM", -75, 65) -- Position to the left of Post Marks button
+    self.openRaidAssignmentsButton:SetWidth(145)
+    self.openRaidAssignmentsButton:SetHeight(24)
+    self.openRaidAssignmentsButton:SetText("Raid Assignments")
+    self.openRaidAssignmentsButton:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        RaidAssignments.GeneralToolTip:Hide()
+        RaidAssignments.Settings["GeneralAnimation"] = true
+        RaidAssignments.Settings["GeneralFrame"] = false
+        
+        -- Open Raid Assignments window
+        RaidAssignments.Settings["Animation"] = false
+        RaidAssignments.Settings["MainFrame"] = false
+        RaidAssignments.Settings["SizeX"] = 0
+        RaidAssignments.Settings["SizeY"] = 0
+        RaidAssignments:Show()
+    end)
+
     self.postGeneralButton = CreateFrame("Button", nil, self.generalBg, "UIPanelButtonTemplate")
-    self.postGeneralButton:SetPoint("BOTTOM", 0, 10)
+    self.postGeneralButton:SetPoint("BOTTOM", 75, 65)
     self.postGeneralButton:SetWidth(145) self.postGeneralButton:SetHeight(24)
     self.postGeneralButton:SetText("Post Marks")
     self.postGeneralButton:SetScript("OnClick", function()

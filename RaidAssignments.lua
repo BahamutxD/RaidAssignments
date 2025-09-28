@@ -533,7 +533,7 @@ function RaidAssignments:ConfigMainFrame()
 
     -- KT Image Button
     self.ktButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
-    self.ktButton:SetPoint("BOTTOM", -450, 10) -- Moved further left
+    self.ktButton:SetPoint("BOTTOM", -440, 10) -- Moved further left
     self.ktButton:SetWidth(60)  -- Reduced from 72 to 60
     self.ktButton:SetHeight(24)
     self.ktButton:SetText("KT Image")
@@ -779,7 +779,7 @@ function RaidAssignments:ConfigMainFrame()
     -- Minimap Button Tooltip
     self.MinimapButton:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_LEFT")
-        GameTooltip:SetText("RaidAssignments 2.0")
+        GameTooltip:SetText("RaidAssignments 3.0")
         GameTooltip:AddLine("Click to toggle Raid Assignments", 1, 1, 1)
         GameTooltip:Show()
     end)
@@ -950,9 +950,9 @@ for i = 9, 10 do
 
     -- Add an EditBox *below the icon* to edit the label for reporting
     local editBox = CreateFrame("EditBox", "G"..i.."_Edit", self.generalBg, "InputBoxTemplate")
-    editBox:SetWidth(120)
+    editBox:SetWidth(90)
     editBox:SetHeight(25)
-    editBox:SetPoint("TOPLEFT", icon, "BOTTOMLEFT", 0, -5) -- Position below the icon with 5-pixel gap
+    editBox:SetPoint("TOPLEFT", icon, "BOTTOMLEFT", -20, -5) -- Position below the icon with 5-pixel gap
     editBox:SetAutoFocus(false)
 
     if RaidAssignments.GeneralRealMarks[i] ~= "" then
@@ -988,7 +988,7 @@ end
 
     -- Button to open Raid Assignments window
     self.openRaidAssignmentsButton = CreateFrame("Button", nil, self.generalBg, "UIPanelButtonTemplate")
-    self.openRaidAssignmentsButton:SetPoint("BOTTOM", -75, 65) -- Position to the left of Post Marks button
+    self.openRaidAssignmentsButton:SetPoint("BOTTOM", 75, 65) -- Position to the left of Post Marks button
     self.openRaidAssignmentsButton:SetWidth(145)
     self.openRaidAssignmentsButton:SetHeight(24)
     self.openRaidAssignmentsButton:SetText("Raid Assignments")
@@ -1007,7 +1007,7 @@ end
     end)
 
     self.postGeneralButton = CreateFrame("Button", nil, self.generalBg, "UIPanelButtonTemplate")
-    self.postGeneralButton:SetPoint("BOTTOM", 75, 65)
+    self.postGeneralButton:SetPoint("BOTTOM", -75, 65)
     self.postGeneralButton:SetWidth(145) self.postGeneralButton:SetHeight(24)
     self.postGeneralButton:SetText("Post Marks")
     self.postGeneralButton:SetScript("OnClick", function()

@@ -736,9 +736,9 @@ function RaidAssignments:ConfigMainFrame()
     
     -- Minimap Button Texture
     self.MinimapButton.texture = self.MinimapButton:CreateTexture(nil, "BACKGROUND")
-    self.MinimapButton.texture:SetWidth(23)
-    self.MinimapButton.texture:SetHeight(23)
-    self.MinimapButton.texture:SetPoint("CENTER", 0, 0)
+    self.MinimapButton.texture:SetWidth(25)
+    self.MinimapButton.texture:SetHeight(25)
+    self.MinimapButton.texture:SetPoint("CENTER", -3, 2)
     self.MinimapButton.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\Icon")
     
     -- Minimap Button Dragging
@@ -906,7 +906,35 @@ function RaidAssignments:ConfigGeneralFrame()
         classframe.Icon:SetTexCoord(r, l, t, b)
         classframe.Icon:SetPoint("TOPRIGHT", -1, -1)
         classframe.Icon:SetWidth(22) classframe.Icon:SetHeight(22)
+        classframe:SetScript("OnEnter", function() 
+            local r,g,b = RaidAssignments:GetClassColors(this:GetName(),"class")
+            GameTooltip:SetOwner(classframe, "ANCHOR_TOPRIGHT")
+            GameTooltip:SetText("|cffFFFFFFShow|r "..this:GetName(), r,g,b)
+            GameTooltip:Show()
+        end)
+        classframe:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        classframe:SetScript("OnMouseDown", function()
+            if arg1 == "LeftButton" then
+                if RaidAssignments_Settings[this:GetName()] == 1 then
+                    RaidAssignments_Settings[this:GetName()] = 0
+                    classframe.Icon:SetVertexColor(0.5, 0.5, 0.5)
+                else
+                    RaidAssignments_Settings[this:GetName()] = 1
+                    classframe.Icon:SetVertexColor(1.0, 1.0, 1.0)
+                end
+            end
+        end)
         i = i + 1
+        if RaidAssignments_Settings[class] == nil then
+            RaidAssignments_Settings[class] = 1
+            classframe.Icon:SetVertexColor(1.0, 1.0, 1.0)			
+        else
+            if RaidAssignments_Settings[class] == 1 then
+                classframe.Icon:SetVertexColor(1.0, 1.0, 1.0)
+            else
+                classframe.Icon:SetVertexColor(0.5, 0.5, 0.5)
+            end			
+        end
     end
 
 -- General marks 1-8 using UI-RaidTargetingIcons
@@ -1584,11 +1612,15 @@ function RaidAssignments:OpenToolTip(frameName)
             end
             if name and class then
                 local f = false
-                for k, v in pairs(RaidAssignments.Marks[n]) do
-                    if name == v then
-                        f = true
-                        break
+                -- Check if player is already assigned to ANY tank mark (1-8)
+                for j = 1, 8 do
+                    for k, v in pairs(RaidAssignments.Marks[j]) do
+                        if name == v then
+                            f = true
+                            break
+                        end
                     end
+                    if f then break end
                 end
                 if not f then
                     if (assignedCount == 0 and RaidAssignments.RoleFilter.TankPrimary[class] or assignedCount > 0) and RaidAssignments_Settings[class] == 1 then
@@ -1637,11 +1669,15 @@ function RaidAssignments:OpenHealToolTip(frameName)
             end
             if name and class then
                 local f = false
-                for k, v in ipairs(RaidAssignments.HealMarks[n]) do
-                    if name == v then
-                        f = true
-                        break
+                -- Check if player is already assigned to ANY heal mark (1-12)
+                for j = 1, 12 do
+                    for k, v in ipairs(RaidAssignments.HealMarks[j]) do
+                        if name == v then
+                            f = true
+                            break
+                        end
                     end
+                    if f then break end
                 end
                 if not f and RaidAssignments.RoleFilter.Healer[class] then
                     index = index + 1
@@ -1725,6 +1761,19 @@ end
 
 function RaidAssignments:AddTank(name, mark)
     mark = tonumber(mark)
+
+    -- Prevent assigning the same player to ANY other tank mark (1-8)
+    for i = 1, 8 do
+        if RaidAssignments.Marks[i] then
+            for _, v in pairs(RaidAssignments.Marks[i]) do
+                if v == name then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to tank " .. (RaidAssignments.RealMarks[i] or "a mark"))
+                    return
+                end
+            end
+        end
+    end
+
     if not RaidAssignments.Marks[mark] then
         RaidAssignments.Marks[mark] = {}
     end
@@ -1745,6 +1794,7 @@ function RaidAssignments:AddTank(name, mark)
         table.insert(RaidAssignments.Marks[mark], name)
     end
 end
+
 
 function RaidAssignments:AddHeal(name, mark)
     mark = tonumber(mark)

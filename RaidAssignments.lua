@@ -1611,15 +1611,16 @@ function RaidAssignments:OpenToolTip(frameName)
                     if f then break end
                 end
                 if not f then
-                    if (assignedCount == 0 and RaidAssignments.RoleFilter.TankPrimary[class] or assignedCount > 0) and RaidAssignments_Settings[class] == 1 then
-                        index = index + 1
-                        RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
-                        local frame = RaidAssignments.Frames["ToolTip"][name]
-                        frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", 2, 25 + (-25 * index))
-                        frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
-                        frame:Show()
-                    end
-                end
+					-- ✅ Removed restriction that first slot must be TankPrimary
+					if RaidAssignments_Settings[class] == 1 then
+						index = index + 1
+						RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
+						local frame = RaidAssignments.Frames["ToolTip"][name]
+						frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", 2, 25 + (-25 * index))
+						frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+						frame:Show()
+					end
+				end
             end
         end
         RaidAssignments.Settings["active"] = n
@@ -1765,20 +1766,21 @@ function RaidAssignments:AddTank(name, mark)
     if not RaidAssignments.Marks[mark] then
         RaidAssignments.Marks[mark] = {}
     end
+
     local index = table.getn(RaidAssignments.Marks[mark]) + 1
     if index < 4 then
         local unit = RaidAssignments:GetRaidID(name)
         local class = RaidAssignments.TestMode and RaidAssignments:GetTestClass(name) or UnitClass(unit)
-        -- Restrict first slot to primary tank classes
-        if index == 1 and not RaidAssignments.RoleFilter.TankPrimary[class] then
-            DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Only Warrior, Druid, Paladin, or Shaman can be assigned as primary tank for mark " .. RaidAssignments.RealMarks[mark])
-            return
-        end
+
+        -- Previously checked: if index == 1 and not RaidAssignments.RoleFilter.TankPrimary[class] then return end
+
+        -- Create the tank frame if it doesn’t exist yet
         RaidAssignments.Frames[mark][name] = RaidAssignments.Frames[mark][name] or RaidAssignments:AddTankFrame(name, mark)
         local frame = RaidAssignments.Frames[mark][name]
         frame:SetPoint("RIGHT", 10 + (105 * index), 0)
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
+
         table.insert(RaidAssignments.Marks[mark], name)
     end
 end

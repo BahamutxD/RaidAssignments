@@ -192,130 +192,118 @@ RaidAssignments:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 
 function RaidAssignments:OnEvent()
     if event == "ADDON_LOADED" and arg1 == "RaidAssignments" then
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: RaidAssignments 2.0 Loaded!")
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta - open/close RaidAssignments")
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: /ta test - toggle test mode with 40 dummy players")
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 3.0|r: Loaded!")
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 3.0|r: /ta - open/close RaidAssignments")
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 3.0|r: /ta test - toggle test mode with 40 dummy players")
+
         RaidAssignments_Settings["usecolors"] = true
         RaidAssignments:ConfigMainFrame()
         RaidAssignments:ConfigGeneralFrame()
         RaidAssignments:UnregisterEvent("ADDON_LOADED")
-    elseif event == "RAID_ROSTER_UPDATE" then 
-        RaidAssignments:UpdateTanks()
-        RaidAssignments:UpdateHeals()
-        RaidAssignments:UpdateGeneral()
-    elseif event == "UNIT_PORTRAIT_UPDATE" then
-        RaidAssignments:UpdateTanks()
-        RaidAssignments:UpdateHeals()
-        RaidAssignments:UpdateGeneral()
+
+    elseif event == "RAID_ROSTER_UPDATE" or event == "UNIT_PORTRAIT_UPDATE" then
+        -- Update all relevant frames safely
+        pcall(function()
+            RaidAssignments:UpdateTanks()
+            RaidAssignments:UpdateHeals()
+            RaidAssignments:UpdateGeneral()
+        end)
+
     elseif event == "CHAT_MSG_ADDON" then
-        if (arg1 == "TankAssignmentsMarks" or arg1 == "HealAssignmentsMarks" or arg1 == "RaidAssignmentsGeneralMarks" or arg1 == "RaidAssignmentsCustomLabels" or string.sub(arg1, 1, 15) == "RaidAssignments") and UnitName("player") ~= arg4 then
+        -- Ignore unknown addon messages
+        if not arg1 or type(arg1) ~= "string" then return end
+        if not (
+            arg1 == "TankAssignmentsMarks" or
+            arg1 == "HealAssignmentsMarks" or
+            arg1 == "RaidAssignmentsGeneralMarks" or
+            arg1 == "RaidAssignmentsCustomLabels" or
+            string.sub(arg1, 1, 15) == "RaidAssignments"
+        ) then
+            return
+        end
+
+        -- Ignore your own broadcast messages
+        if UnitName("player") == arg4 then return end
+
+        -- Use pcall to guard against any parse errors in received data
+        pcall(function()
             if arg1 == "TankAssignmentsMarks" then
-                RaidAssignments.Marks = {
-                    [1] = {}, [2] = {}, [3] = {}, [4] = {}, [5] = {}, [6] = {}, [7] = {}, [8] = {},
-                }
-                for text in string.gfind(arg2, "%d%a+") do
+                RaidAssignments.Marks = { [1]={},[2]={},[3]={},[4]={},[5]={},[6]={},[7]={},[8]={} }
+                for text in string.gfind(arg2 or "", "%d%a+") do
                     local mark = tonumber(string.sub(text, 1, 1))
-                    table.insert(RaidAssignments.Marks[mark], string.sub(text, 2, string.len(text)))
+                    table.insert(RaidAssignments.Marks[mark], string.sub(text, 2))
                 end
                 RaidAssignments:UpdateTanks()
+
             elseif arg1 == "HealAssignmentsMarks" then
-                RaidAssignments.HealMarks = {
-                    [1] = {nil, nil, nil, nil}, [2] = {nil, nil, nil, nil}, [3] = {nil, nil, nil, nil},
-                    [4] = {nil, nil, nil, nil}, [5] = {nil, nil, nil, nil}, [6] = {nil, nil, nil, nil},
-                    [7] = {nil, nil, nil, nil}, [8] = {nil, nil, nil, nil}, [9] = {nil, nil, nil, nil},
-                    [10] = {nil, nil, nil, nil}, [11] = {nil, nil, nil, nil}, [12] = {nil, nil, nil, nil},
-                }
-                -- Parse heal assignments with underscore separator
+                RaidAssignments.HealMarks = {}
+                for i = 1, 12 do RaidAssignments.HealMarks[i] = {nil,nil,nil,nil} end
                 local pos = 1
-                while pos <= string.len(arg2) do
+                while pos <= string.len(arg2 or "") do
                     local markEnd = string.find(arg2, "_", pos)
                     if not markEnd then break end
                     local slotEnd = string.find(arg2, "_", markEnd + 1)
                     if not slotEnd then break end
                     local nameEnd = string.find(arg2, ",", slotEnd + 1)
                     if not nameEnd then nameEnd = string.len(arg2) + 1 end
-                    
                     local mark = tonumber(string.sub(arg2, pos, markEnd - 1))
                     local slot = tonumber(string.sub(arg2, markEnd + 1, slotEnd - 1))
                     local name = string.sub(arg2, slotEnd + 1, nameEnd - 1)
-                    
                     if mark and slot and slot <= 4 and name and name ~= "" then
                         RaidAssignments.HealMarks[mark][slot] = name
                     end
                     pos = nameEnd + 1
                 end
                 RaidAssignments:UpdateHeals()
+
             elseif arg1 == "RaidAssignmentsGeneralMarks" then
-                -- Initialize ALL marks including custom ones
                 for i = 1, 10 do
-                    if not RaidAssignments.GeneralMarks[i] then
-                        RaidAssignments.GeneralMarks[i] = {}
-                    else
-                        -- Clear existing assignments for this mark
-                        RaidAssignments.GeneralMarks[i] = {}
-                    end
+                    RaidAssignments.GeneralMarks[i] = {}
                 end
-                
-                -- Parse general assignments with underscore separator
                 local pos = 1
-                while pos <= string.len(arg2) do
+                while pos <= string.len(arg2 or "") do
                     local markEnd = string.find(arg2, "_", pos)
                     if not markEnd then break end
                     local slotEnd = string.find(arg2, "_", markEnd + 1)
                     if not slotEnd then break end
                     local nameEnd = string.find(arg2, ",", slotEnd + 1)
                     if not nameEnd then nameEnd = string.len(arg2) + 1 end
-                    
                     local mark = tonumber(string.sub(arg2, pos, markEnd - 1))
                     local slot = tonumber(string.sub(arg2, markEnd + 1, slotEnd - 1))
                     local name = string.sub(arg2, slotEnd + 1, nameEnd - 1)
-                    
                     if mark and slot and name and name ~= "" and mark >= 1 and mark <= 10 then
-                        if not RaidAssignments.GeneralMarks[mark] then
-                            RaidAssignments.GeneralMarks[mark] = {}
-                        end
                         RaidAssignments.GeneralMarks[mark][slot] = name
                     end
                     pos = nameEnd + 1
                 end
                 RaidAssignments:UpdateGeneral()
+
             elseif arg1 == "RaidAssignmentsCustomLabels" then
-    -- Parse custom mark labels with underscore separator
-	local pos = 1
-		while pos <= string.len(arg2) do
-			local markEnd = string.find(arg2, "_", pos)
-			if not markEnd then break end
-			local labelEnd = string.find(arg2, ",", markEnd + 1)
-			if not labelEnd then labelEnd = string.len(arg2) + 1 end
-			
-			local mark = tonumber(string.sub(arg2, pos, markEnd - 1))
-			local label = string.sub(arg2, markEnd + 1, labelEnd - 1)
-			
-			if mark and (mark == 9 or mark == 10) and label ~= nil then  -- Changed: Allow empty string to clear
-				RaidAssignments.GeneralRealMarks[mark] = label
-				-- Update the EditBox if it exists
-				local editBox = _G["G"..mark.."_Edit"]
-				if editBox then
-					editBox:SetText(label)
-				end
-			end
-			pos = labelEnd + 1
-		end
-		RaidAssignments:UpdateGeneral()  -- Add this to refresh UI after label sync
-	end
-        end
-    elseif event == "UPDATE_MOUSEOVER_UNIT" then
-        if UnitExists("mouseover") then
-            if GetRaidTargetIndex("mouseover") then
-                for i = 1, 8 do
-                    if GetRaidTargetIndex("mouseover") == i and table.getn(RaidAssignments.Marks[i]) > 0 then
-                        local names = ""
-                        for k, v in pairs(RaidAssignments.Marks[i]) do
-                            names = names .. " " .. v
-                        end
-                        GameTooltip:AddDoubleLine("RaidAssignments", names, 0.78, 0.61, 0.43, 1, 1, 1)
+                local pos = 1
+                while pos <= string.len(arg2 or "") do
+                    local markEnd = string.find(arg2, "_", pos)
+                    if not markEnd then break end
+                    local labelEnd = string.find(arg2, ",", markEnd + 1)
+                    if not labelEnd then labelEnd = string.len(arg2) + 1 end
+                    local mark = tonumber(string.sub(arg2, pos, markEnd - 1))
+                    local label = string.sub(arg2, markEnd + 1, labelEnd - 1)
+                    if mark and (mark == 9 or mark == 10) then
+                        RaidAssignments.GeneralRealMarks[mark] = label or ""
+                        local editBox = _G["G"..mark.."_Edit"]
+                        if editBox then editBox:SetText(label or "") end
                     end
+                    pos = labelEnd + 1
                 end
+                RaidAssignments:UpdateGeneral()
+            end
+        end)
+
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        if UnitExists("mouseover") and GetRaidTargetIndex("mouseover") then
+            local index = GetRaidTargetIndex("mouseover")
+            if RaidAssignments.Marks[index] and table.getn(RaidAssignments.Marks[index]) > 0 then
+                local names = table.concat(RaidAssignments.Marks[index], " ")
+                GameTooltip:AddDoubleLine("RaidAssignments", names, 0.78, 0.61, 0.43, 1, 1, 1)
             end
         end
     end

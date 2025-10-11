@@ -1654,13 +1654,24 @@ end
 function RaidAssignments:SendTanks()
     if IsRaidOfficer("player") then
         local sendstring = ""
-        for mark=1,12 do  -- Changed from 8 to 12 to include curse marks
+        -- Only send regular tank marks (1-8) for backward compatibility
+        for mark=1,8 do
             for k,v in pairs(RaidAssignments.Marks[mark]) do
                 sendstring = sendstring .. mark .. v
             end
         end
-        -- always send, even if empty
         SendAddonMessage("TankAssignmentsMarks", sendstring, "RAID")
+        
+        -- Send curse marks separately with a different prefix
+        local cursestring = ""
+        for mark=9,12 do
+            for k,v in pairs(RaidAssignments.Marks[mark]) do
+                cursestring = cursestring .. (mark-8) .. v -- Convert 9-12 to 1-4 for old clients
+            end
+        end
+        if cursestring ~= "" then
+            SendAddonMessage("CurseAssignmentsMarks", cursestring, "RAID")
+        end
     end
 end
 

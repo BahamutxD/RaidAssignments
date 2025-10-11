@@ -35,15 +35,20 @@ RaidAssignments.Settings = {
 }
 
 RaidAssignments.Marks = {
-	[1] = {},
-	[2] = {},
-	[3] = {},
-	[4] = {},
-	[5] = {},
-	[6] = {},
-	[7] = {},
-	[8] = {},
+    [1] = {},
+    [2] = {},
+    [3] = {},
+    [4] = {},
+    [5] = {},
+    [6] = {},
+    [7] = {},
+    [8] = {},
+    [9] = {},  
+    [10] = {}, 
+    [11] = {}, 
+    [12] = {}, 
 }
+
 
 RaidAssignments.RealMarks = {
 	[1] = "Star",
@@ -54,6 +59,13 @@ RaidAssignments.RealMarks = {
 	[6] = "Square",
 	[7] = "Cross",
 	[8] = "Skull",
+}
+
+RaidAssignments.WarlockMarks = {
+    [9] = { icon = "Interface\\AddOns\\RaidAssignments\\assets\\Spell_Shadow_CurseOfTounges.tga", name = "Curse of Tongues" },
+	[10] = { icon = "Interface\\AddOns\\RaidAssignments\\assets\\Spell_Shadow_UnholyStrength.tga", name = "Curse of Recklessness" },
+	[11] = { icon = "Interface\\AddOns\\RaidAssignments\\assets\\Spell_Shadow_CurseOfAchimonde.tga", name = "Curse of the Elements" },
+	[12] = { icon = "Interface\\AddOns\\RaidAssignments\\assets\\Spell_Shadow_ChillTouch.tga", name = "Curse of Shadow" },
 }
 
 RaidAssignments.HealMarks = {
@@ -107,18 +119,23 @@ RaidAssignments.GeneralRealMarks = {
 }
 
 RaidAssignments.Frames = {
-	["ToolTip"] = {},
-	["HealToolTip"] = {},
-	["GeneralToolTip"] = {},
-	[1] = {},
-	[2] = {},
-	[3] = {},
-	[4] = {},
-	[5] = {},
-	[6] = {},
-	[7] = {},
-	[8] = {},
+    ["ToolTip"] = {},
+    ["HealToolTip"] = {},
+    ["GeneralToolTip"] = {},
+    [1] = {},
+    [2] = {},
+    [3] = {},
+    [4] = {},
+    [5] = {},
+    [6] = {},
+    [7] = {},
+    [8] = {},
+    [9] = {},  
+    [10] = {}, 
+    [11] = {}, 
+    [12] = {}, 
 }
+
 
 RaidAssignments.HealFrames = {
 	[1] = {},
@@ -228,11 +245,52 @@ function RaidAssignments:OnEvent()
         -- Use pcall to guard against any parse errors in received data
         pcall(function()
             if arg1 == "TankAssignmentsMarks" then
-                RaidAssignments.Marks = { [1]={},[2]={},[3]={},[4]={},[5]={},[6]={},[7]={},[8]={} }
-                for text in string.gfind(arg2 or "", "%d%a+") do
-                    local mark = tonumber(string.sub(text, 1, 1))
-                    table.insert(RaidAssignments.Marks[mark], string.sub(text, 2))
+                -- Initialize ALL marks 1-12 (including curses)
+                RaidAssignments.Marks = { 
+                    [1]={},[2]={},[3]={},[4]={},[5]={},[6]={},[7]={},[8]={},
+                    [9]={},[10]={},[11]={},[12]={} 
+                }
+                
+                -- Debug: Show what we're receiving
+                -- DEFAULT_CHAT_FRAME:AddMessage("Received TankAssignmentsMarks: " .. (arg2 or "empty"))
+                
+                -- Parse the mark assignments
+                local pos = 1
+                local data = arg2 or ""
+                while pos <= string.len(data) do
+                    -- Find the next number (mark)
+                    local markStart, markEnd = string.find(data, "%d+", pos)
+                    if not markStart then break end
+                    
+                    local mark = tonumber(string.sub(data, markStart, markEnd))
+                    if not mark or mark < 1 or mark > 12 then
+                        pos = markEnd + 1
+                        break
+                    end
+                    
+                    -- Find the player name (everything until next number or end)
+                    local nameStart = markEnd + 1
+                    local nextMarkStart = string.find(data, "%d", nameStart)
+                    local nameEnd
+                    
+                    if nextMarkStart then
+                        nameEnd = nextMarkStart - 1
+                    else
+                        nameEnd = string.len(data)
+                    end
+                    
+                    local name = string.sub(data, nameStart, nameEnd)
+                    
+                    -- Only add if name is valid
+                    if name and name ~= "" then
+                        table.insert(RaidAssignments.Marks[mark], name)
+                        -- DEFAULT_CHAT_FRAME:AddMessage("Parsed: Mark " .. mark .. " = " .. name)
+                    end
+                    
+                    pos = nameEnd + 1
+                    if pos > string.len(data) then break end
                 end
+                
                 RaidAssignments:UpdateTanks()
 
             elseif arg1 == "HealAssignmentsMarks" then
@@ -462,27 +520,49 @@ function RaidAssignments:ConfigMainFrame()
     end
 
     local padding = 5
-    for i = 8, 1, -1 do
-        local r, l, t, b = RaidAssignments:GetMarkPos(i)
-        local icon = CreateFrame("Frame", "T"..i, self.bg) 
-        icon:SetWidth(35)
-        icon:SetHeight(35) 
-        icon:SetPoint("TOPLEFT", 50, 85 - ((35 + padding) * (12 - i)))
-        icon:SetFrameStrata("MEDIUM")
-        icon:EnableMouse(true)
-        icon:SetScript("OnEnter", function()
-            RaidAssignments:OpenToolTip(this:GetName())
-        end)
-        icon:SetScript("OnLeave", function() end)   
-        
-        icon.Icon = icon:CreateTexture(nil, "ARTWORK")
-        icon.Icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
-        icon.Icon:SetTexCoord(r, l, t, b)
-        icon.Icon:SetPoint("CENTER", 0,0)
-        icon.Icon:SetWidth(35)
-        icon.Icon:SetHeight(35)
-    end
-    
+-- Default 1–8 standard raid icons
+for i = 8, 1, -1 do
+    local r, l, t, b = RaidAssignments:GetMarkPos(i)
+    local icon = CreateFrame("Frame", "T"..i, self.bg)
+    icon:SetWidth(35)
+    icon:SetHeight(35)
+    icon:SetPoint("TOPLEFT", 50, 85 - ((35 + padding) * (12 - i)))
+    icon:SetFrameStrata("MEDIUM")
+    icon:EnableMouse(true)
+    icon:SetScript("OnEnter", function()
+        RaidAssignments:OpenToolTip(this:GetName())
+    end)
+    icon:SetScript("OnLeave", function() end)
+
+    icon.Icon = icon:CreateTexture(nil, "ARTWORK")
+    icon.Icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+    icon.Icon:SetTexCoord(r, l, t, b)
+    icon.Icon:SetPoint("CENTER", 0,0)
+    icon.Icon:SetWidth(35)
+    icon.Icon:SetHeight(35)
+end
+
+	-- Add 4 Warlock-only marks (Curse icons)
+	for i = 9, 12 do
+		local data = RaidAssignments.WarlockMarks[i]
+		local icon = CreateFrame("Frame", "T"..i, self.bg)
+		icon:SetWidth(35)
+		icon:SetHeight(35)
+		icon:SetPoint("TOPLEFT", 50, -400- ((35 + padding) * (12 - i)))
+		icon:SetFrameStrata("MEDIUM")
+		icon:EnableMouse(true)
+		icon:SetScript("OnEnter", function()
+			RaidAssignments:OpenToolTip(this:GetName())
+		end)
+		icon:SetScript("OnLeave", function() end)
+	
+		icon.Icon = icon:CreateTexture(nil, "ARTWORK")
+		icon.Icon:SetTexture(data.icon)
+		icon.Icon:SetPoint("CENTER", 0, 0)
+		icon.Icon:SetWidth(35)
+		icon.Icon:SetHeight(35)
+	end
+  
     local newHealOrder = {"D", "C", "B", "A", "4", "3", "2", "1", "South", "North", "Right", "Left"}
     local padding = 5
     for i = 12, 1, -1 do
@@ -669,9 +749,22 @@ function RaidAssignments:ConfigMainFrame()
         end
     end)
     
-    -- Post All Assignments Button
+    -- Post Curses Button (SWAPPED POSITION)
+    self.cursesButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.cursesButton:SetPoint("BOTTOM", 100, 10) -- Changed from 250 to 100
+    self.cursesButton:SetWidth(145)
+    self.cursesButton:SetHeight(24)
+    self.cursesButton:SetText("Post Curses")
+    self.cursesButton:SetScript("OnClick", function()
+        if IsRaidOfficer("player") then
+            PlaySound("igMainMenuOptionCheckBoxOn")
+            RaidAssignments:PostCurses()
+        end
+    end)
+    
+    -- Post All Assignments Button (SWAPPED POSITION)
     self.dbutton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
-    self.dbutton:SetPoint("BOTTOM", 100, 10)
+    self.dbutton:SetPoint("BOTTOM", 250, 10) -- Changed from 100 to 250
     self.dbutton:SetFrameStrata("MEDIUM")
     self.dbutton:SetWidth(145)
     self.dbutton:SetHeight(24)
@@ -681,17 +774,6 @@ function RaidAssignments:ConfigMainFrame()
             PlaySound("igMainMenuOptionCheckBoxOn")
             RaidAssignments:PostAssignments() 
         end
-    end)
-    
-    -- Whisper Button
-    self.whisperButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
-    self.whisperButton:SetPoint("BOTTOM", 250, 10)
-    self.whisperButton:SetWidth(145)
-    self.whisperButton:SetHeight(24)
-    self.whisperButton:SetText("Whisper Assignments")
-    self.whisperButton:SetScript("OnClick", function()
-        PlaySound("igMainMenuOptionCheckBoxOn")
-        RaidAssignments:WhisperAssignments()
     end)
     
     -- New Button for General Assignments
@@ -1423,6 +1505,39 @@ function RaidAssignments:IsInRaid(name)
 	return false
 end
 
+-- Restrict Curse Marks (9–12) to Warlocks only
+function RaidAssignments:CanAssignToMark(mark, playerName)
+    if mark >= 9 and mark <= 12 then
+        -- Determine player's class
+        local playerClass
+        if RaidAssignments.TestMode then
+            for _, unit in ipairs(RaidAssignments.TestRoster) do
+                if unit.name == playerName then
+                    playerClass = unit.class
+                    break
+                end
+            end
+        else
+            for i = 1, GetNumRaidMembers() do
+                if UnitName("raid"..i) == playerName then
+                    playerClass = UnitClass("raid"..i)
+                    break
+                end
+            end
+            if not playerClass and UnitName("player") == playerName then
+                playerClass = UnitClass("player")
+            end
+        end
+
+        -- Restrict to Warlock
+        if playerClass ~= "Warlock" then
+            -- REMOVED DEBUG MESSAGE
+            return false
+        end
+    end
+    return true
+end
+
 function RaidAssignments:GetRaidID(name)
 	if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
 		local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
@@ -1457,19 +1572,26 @@ end
 
 function RaidAssignments:UpdateTanks()
     if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
-        for i=1,8 do
+        for i=1,12 do  -- Changed from 8 to 12 to include curse marks
+            -- Ensure Marks[i] exists
+            if not RaidAssignments.Marks[i] then
+                RaidAssignments.Marks[i] = {}
+            end
+            
             -- Hide old frames
             for k,v in pairs(RaidAssignments.Frames[i]) do
                 v:Hide()
             end
+            
             -- Remove players not in raid anymore
             for k,v in pairs(RaidAssignments.Marks[i]) do
                 if not RaidAssignments:IsInRaid(v) then    
                     table.remove(RaidAssignments.Marks[i],k)
-                    table.sort(RaidAssignments.Marks[i])    
+                    -- Don't sort here as it can break the loop
                 end
             end
-            -- Show frames for tanks
+            
+            -- Show frames for tanks/curses
             local index = 0
             for k,v in pairs(RaidAssignments.Marks[i]) do
                 index = index + 1
@@ -1485,7 +1607,12 @@ function RaidAssignments:UpdateTanks()
             end
         end
     else
-        for i=1,8 do
+        for i=1,12 do  -- Changed from 8 to 12 to include curse marks
+            -- Ensure Marks[i] exists
+            if not RaidAssignments.Marks[i] then
+                RaidAssignments.Marks[i] = {}
+            end
+            
             for k,v in pairs(RaidAssignments.Frames[i]) do
                 if v:IsVisible() then
                     v:Hide()
@@ -1527,7 +1654,7 @@ end
 function RaidAssignments:SendTanks()
     if IsRaidOfficer("player") then
         local sendstring = ""
-        for mark=1,8 do
+        for mark=1,12 do  -- Changed from 8 to 12 to include curse marks
             for k,v in pairs(RaidAssignments.Marks[mark]) do
                 sendstring = sendstring .. mark .. v
             end
@@ -1536,7 +1663,6 @@ function RaidAssignments:SendTanks()
         SendAddonMessage("TankAssignmentsMarks", sendstring, "RAID")
     end
 end
-
 
 function RaidAssignments:SendHeals()
     if IsRaidOfficer("player") then
@@ -1586,9 +1712,17 @@ function RaidAssignments:OpenToolTip(frameName)
         end
         local index = 0
         local n = tonumber(string.sub(frameName, 2))
-        local assignedCount = table.getn(RaidAssignments.Marks[n])
+        local assignedCount = RaidAssignments.Marks[n] and table.getn(RaidAssignments.Marks[n]) or 0
+        
+        -- Don't show tooltip if curse mark already has 1 player assigned
+        if n >= 9 and n <= 12 and assignedCount >= 1 then
+            -- REMOVED DEBUG MESSAGE - just return silently
+            return
+        end
+        
         local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
         local numMembers = RaidAssignments.TestMode and table.getn(RaidAssignments.TestRoster) or GetNumRaidMembers()
+        
         for i = 1, numMembers do
             local name, class
             if RaidAssignments.TestMode then
@@ -1600,29 +1734,44 @@ function RaidAssignments:OpenToolTip(frameName)
             end
             if name and class then
                 local f = false
-                -- Check if player is already assigned to ANY tank mark (1-8)
-                for j = 1, 8 do
-                    for k, v in pairs(RaidAssignments.Marks[j]) do
-                        if name == v then
-                            f = true
-                            break
+                -- Check if player is already assigned to ANY tank mark (1-12)
+                for j = 1, 12 do
+                    if RaidAssignments.Marks[j] then
+                        for k, v in pairs(RaidAssignments.Marks[j]) do
+                            if name == v then
+                                f = true
+                                break
+                            end
                         end
                     end
                     if f then break end
                 end
                 if not f then
-					-- ✅ Removed restriction that first slot must be TankPrimary
-					if RaidAssignments_Settings[class] == 1 then
-						index = index + 1
-						RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
-						local frame = RaidAssignments.Frames["ToolTip"][name]
-						frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", 2, 25 + (-25 * index))
-						frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
-						frame:Show()
-					end
-				end
+                    -- SPECIAL HANDLING FOR CURSE MARKS (9-12): Only show Warlocks
+                    if n >= 9 and n <= 12 then
+                        if class == "Warlock" and RaidAssignments_Settings[class] == 1 then
+                            index = index + 1
+                            RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
+                            local frame = RaidAssignments.Frames["ToolTip"][name]
+                            frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", 2, 25 + (-25 * index))
+                            frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                            frame:Show()
+                        end
+                    else
+                        -- Regular marks (1-8): Show all enabled classes
+                        if RaidAssignments_Settings[class] == 1 then
+                            index = index + 1
+                            RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
+                            local frame = RaidAssignments.Frames["ToolTip"][name]
+                            frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", 2, 25 + (-25 * index))
+                            frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                            frame:Show()
+                        end
+                    end
+                end
             end
         end
+        
         RaidAssignments.Settings["active"] = n
         RaidAssignments.ToolTip:SetBackdrop({bgFile = "Interface/Tooltips/UI-Tooltip-Background"})
         RaidAssignments.ToolTip:SetBackdropColor(0, 0, 0, 1)
@@ -1751,12 +1900,12 @@ end
 function RaidAssignments:AddTank(name, mark)
     mark = tonumber(mark)
 
-    -- Prevent assigning the same player to ANY other tank mark (1-8)
-    for i = 1, 8 do
+    -- Prevent assigning the same player to ANY other tank mark (1-12)
+    for i = 1, 12 do
         if RaidAssignments.Marks[i] then
             for _, v in pairs(RaidAssignments.Marks[i]) do
                 if v == name then
-                    DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to tank " .. (RaidAssignments.RealMarks[i] or "a mark"))
+                    -- REMOVED DEBUG MESSAGE
                     return
                 end
             end
@@ -1767,24 +1916,35 @@ function RaidAssignments:AddTank(name, mark)
         RaidAssignments.Marks[mark] = {}
     end
 
+    -- SPECIAL HANDLING FOR CURSE MARKS (9-12): Limit to 1 player
+    if mark >= 9 and mark <= 12 then
+        if table.getn(RaidAssignments.Marks[mark]) >= 1 then
+            return
+        end
+    end
+
     local index = table.getn(RaidAssignments.Marks[mark]) + 1
-    if index < 4 then
+    
+    -- Regular marks (1-8) can have up to 3 players, curses (9-12) only 1
+    if (mark <= 8 and index < 4) or (mark >= 9 and mark <= 12 and index < 2) then
         local unit = RaidAssignments:GetRaidID(name)
         local class = RaidAssignments.TestMode and RaidAssignments:GetTestClass(name) or UnitClass(unit)
 
-        -- Previously checked: if index == 1 and not RaidAssignments.RoleFilter.TankPrimary[class] then return end
-
-        -- Create the tank frame if it doesn’t exist yet
+        -- Create the tank frame if it doesn't exist yet
         RaidAssignments.Frames[mark][name] = RaidAssignments.Frames[mark][name] or RaidAssignments:AddTankFrame(name, mark)
         local frame = RaidAssignments.Frames[mark][name]
         frame:SetPoint("RIGHT", 10 + (105 * index), 0)
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
 
-        table.insert(RaidAssignments.Marks[mark], name)
+        if RaidAssignments:CanAssignToMark(mark, name) then
+            table.insert(RaidAssignments.Marks[mark], name)
+            RaidAssignments:SendTanks()
+        end
+    else
+        -- REMOVED DEBUG MESSAGE for "All slots are already filled"
     end
 end
-
 
 function RaidAssignments:AddHeal(name, mark)
     mark = tonumber(mark)
@@ -1792,7 +1952,7 @@ function RaidAssignments:AddHeal(name, mark)
     -- Prevent assigning the same healer twice in the same mark
     for i = 1, 4 do
         if RaidAssignments.HealMarks[mark][i] == name then
-            DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to heal " .. RaidAssignments.HealRealMarks[mark])
+            -- REMOVED DEBUG MESSAGE
             return
         end
     end
@@ -1815,7 +1975,7 @@ function RaidAssignments:AddHeal(name, mark)
         frame:Show()
         RaidAssignments.HealMarks[mark][slot] = name
     else
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: All slots are already filled for " .. RaidAssignments.HealRealMarks[mark])
+        -- REMOVED DEBUG MESSAGE for "All slots are already filled"
     end
 end
 
@@ -1832,7 +1992,7 @@ function RaidAssignments:AddGeneral(name, mark)
         if RaidAssignments.GeneralMarks[i] then
             for _, v in pairs(RaidAssignments.GeneralMarks[i]) do
                 if v == name then
-                    DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: " .. name .. " is already assigned to " .. (RaidAssignments.GeneralRealMarks[i] or "a mark"))
+                    -- REMOVED DEBUG MESSAGE
                     return
                 end
             end
@@ -1859,7 +2019,7 @@ function RaidAssignments:AddGeneral(name, mark)
         -- Send updates
         RaidAssignments:SendGeneral()
     else
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: All slots are already filled for " .. (RaidAssignments.GeneralRealMarks[mark] or "this mark"))
+        -- REMOVED DEBUG MESSAGE for "All slots are already filled"
     end
 end
 
@@ -2099,6 +2259,7 @@ function RaidAssignments:AddGeneralFrame(name, mark)
     frame:SetScript("OnLeave", UnitFrame_OnLeave)
     return frame
 end
+
 function RaidAssignments:PostAssignments()
     local chan = "RAID" -- Default to RAID channel
     local chanNum = nil
@@ -2130,6 +2291,34 @@ function RaidAssignments:PostAssignments()
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
+            end
+        end
+
+        -- Curses (NEW SECTION)
+        n = false
+        for i = 9, 12 do
+            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                n = true
+                break
+            end
+        end
+        if n then
+            SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+            for i = 9, 12 do
+                if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                    local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
+                    local text = curseName .. ": "
+                    
+                    for k, v in pairs(RaidAssignments.Marks[i]) do
+                        if k == 1 then
+                            text = text .. RaidAssignments:GetClassColors(v, "cff")
+                        else
+                            text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
+                        end
+                    end
+                    text = text .. "."
+                    SendChatMessage(text, chan, nil, chanNum)
+                end
             end
         end
 
@@ -2207,6 +2396,34 @@ function RaidAssignments:PostAssignments()
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
+            end
+        end
+
+        -- Curses (no colors) (NEW SECTION)
+        n = false
+        for i = 9, 12 do
+            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                n = true
+                break
+            end
+        end
+        if n then
+            SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+            for i = 9, 12 do
+                if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                    local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
+                    local text = curseName .. ": "
+                    
+                    for k, v in pairs(RaidAssignments.Marks[i]) do
+                        if k == 1 then
+                            text = text .. v
+                        else
+                            text = text .. ", " .. v
+                        end
+                    end
+                    text = text .. "."
+                    SendChatMessage(text, chan, nil, chanNum)
+                end
             end
         end
 
@@ -2699,5 +2916,81 @@ function RaidAssignments:SendCustomMarkLabels()
             sendstring = sendstring .. i .. "_" .. label .. ","
         end
         SendAddonMessage("RaidAssignmentsCustomLabels", sendstring, "RAID")
+    end
+end
+
+function RaidAssignments:PostCurses()
+    if not IsRaidOfficer("player") then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 3.0|r: You must be a raid officer to post curse assignments")
+        return
+    end
+    
+    local chan = "RAID"
+    local chanNum = nil
+    local hasCurses = false
+    
+    -- Check if there are any curse assignments
+    for i = 9, 12 do
+        if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+            hasCurses = true
+            break
+        end
+    end
+    
+    if not hasCurses then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 3.0|r: No curse assignments to post")
+        return
+    end
+    
+    if RaidAssignments_Settings["usecolors"] then
+        SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+        for i = 9, 12 do
+            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
+                local text = curseName .. ": "
+                
+                for k, v in pairs(RaidAssignments.Marks[i]) do
+                    if k == 1 then
+                        text = text .. RaidAssignments:GetClassColors(v, "cff")
+                    else
+                        text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
+                    end
+                end
+                text = text .. "."
+                SendChatMessage(text, chan, nil, chanNum)
+            end
+        end
+    else
+        SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+        for i = 9, 12 do
+            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
+                local text = curseName .. ": "
+                
+                for k, v in pairs(RaidAssignments.Marks[i]) do
+                    if k == 1 then
+                        text = text .. v
+                    else
+                        text = text .. ", " .. v
+                    end
+                end
+                text = text .. "."
+                SendChatMessage(text, chan, nil, chanNum)
+            end
+        end
+    end
+    
+    -- Also whisper individual assignments if enabled
+    if RaidAssignments_Settings["useWhisper"] then
+        for i = 9, 12 do
+            for k, v in pairs(RaidAssignments.Marks[i]) do
+                if RaidAssignments:IsInRaid(v) then
+                    local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
+                    local text = "You are assigned to " .. curseName .. " (slot " .. k .. ")"
+                    SendChatMessage(text, "WHISPER", nil, v)
+                end
+            end
+        end
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 3.0|r: Whispered curse assignments to players")
     end
 end

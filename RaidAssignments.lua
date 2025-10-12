@@ -18,7 +18,7 @@ RaidAssignments_Settings["useWhisper"] = RaidAssignments_Settings["useWhisper"] 
 RaidAssignments.Settings = {
 	["MainFrame"] = false,
 	["Animation"] = false,
-	["MainFrameX"] = 950,
+	["MainFrameX"] = 1050,  -- Increased from 950 to 1050
 	["MainFrameY"] = 600,
 	["SizeX"] = 0,
 	["SizeY"] = 0,
@@ -69,18 +69,18 @@ RaidAssignments.WarlockMarks = {
 }
 
 RaidAssignments.HealMarks = {
-	[1] = {nil, nil, nil, nil},
-	[2] = {nil, nil, nil, nil},
-	[3] = {nil, nil, nil, nil},
-	[4] = {nil, nil, nil, nil},
-	[5] = {nil, nil, nil, nil},
-	[6] = {nil, nil, nil, nil},
-	[7] = {nil, nil, nil, nil},
-	[8] = {nil, nil, nil, nil},
-	[9] = {nil, nil, nil, nil},
-	[10] = {nil, nil, nil, nil},
-	[11] = {nil, nil, nil, nil},
-	[12] = {nil, nil, nil, nil},
+	[1] = {nil, nil, nil, nil, nil, nil},
+	[2] = {nil, nil, nil, nil, nil, nil},
+	[3] = {nil, nil, nil, nil, nil, nil},
+	[4] = {nil, nil, nil, nil, nil, nil},
+	[5] = {nil, nil, nil, nil, nil, nil},
+	[6] = {nil, nil, nil, nil, nil, nil},
+	[7] = {nil, nil, nil, nil, nil, nil},
+	[8] = {nil, nil, nil, nil, nil, nil},
+	[9] = {nil, nil, nil, nil, nil, nil},
+	[10] = {nil, nil, nil, nil, nil, nil},
+	[11] = {nil, nil, nil, nil, nil, nil},
+	[12] = {nil, nil, nil, nil, nil, nil},
 }
 
 RaidAssignments.HealRealMarks = {
@@ -101,7 +101,8 @@ RaidAssignments.HealRealMarks = {
 RaidAssignments.GeneralMarks = {
 [1] = {}, [2] = {}, [3] = {}, [4] = {},
 [5] = {}, [6] = {}, [7] = {}, [8] = {},
-[9] = {}, [10] = {}, -- new custom marks
+[9] = {nil, nil, nil, nil, nil, nil, nil}, -- 7 slots for custom mark 1
+[10] = {nil, nil, nil, nil, nil, nil, nil}, -- 7 slots for custom mark 2
 }
 
 
@@ -215,6 +216,7 @@ function RaidAssignments:OnEvent()
 
         RaidAssignments_Settings["usecolors"] = true
         RaidAssignments:ConfigMainFrame()
+		RaidAssignments:SetScale(RaidAssignments_Settings["UIScale"] or 1.0)
         RaidAssignments:ConfigGeneralFrame()
         RaidAssignments:UnregisterEvent("ADDON_LOADED")
 
@@ -471,8 +473,8 @@ function RaidAssignments:ConfigMainFrame()
     self.text:SetShadowOffset(2,-2)
     self.text:SetText("Raid Assignments")
     
-    local classIconStartX = 50
-    local classIconY = -25
+    local classIconStartX = 0
+    local classIconY = -10
     local i = 1
     for n, class in pairs(RaidAssignments.Classes) do	
         local r, l, t, b = RaidAssignments:ClassPos(class)
@@ -596,9 +598,96 @@ end
         RaidAssignments.Settings["Animation"] = true
         RaidAssignments.Settings["MainFrame"] = false
     end)
-	
-    -- In the ConfigMainFrame() function, replace the existing KT and 4H button code with this:
 
+    -- Reset All Button for Main Frame
+    self.resetAllButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.resetAllButton:SetPoint("TOPRIGHT", self.CloseButton, "TOPLEFT", -10, -15)
+    self.resetAllButton:SetWidth(80)
+    self.resetAllButton:SetHeight(24)
+    self.resetAllButton:SetText("Reset All")
+    self.resetAllButton:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        -- Clear all tank assignments (marks 1-12)
+        for i = 1, 12 do
+            RaidAssignments.Marks[i] = {}
+            for k, v in pairs(RaidAssignments.Frames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+        end
+        
+        -- Clear all heal assignments
+        for i = 1, 12 do
+            for k = 1, 6 do
+                RaidAssignments.HealMarks[i][k] = nil
+            end
+            for k, v in pairs(RaidAssignments.HealFrames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+        end
+        
+        RaidAssignments:UpdateTanks()
+        RaidAssignments:UpdateHeals()
+        RaidAssignments:SendTanks()
+        RaidAssignments:SendHeals()
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments|r: All tank and heal assignments cleared")
+    end)
+
+    -- Master Reset All Button (clears everything)
+    self.masterResetButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.masterResetButton:SetPoint("TOPRIGHT", self.resetAllButton, "TOPLEFT", -10, 0)
+    self.masterResetButton:SetWidth(100)
+    self.masterResetButton:SetHeight(24)
+    self.masterResetButton:SetText("Reset All Frames")
+    self.masterResetButton:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        -- Clear all tank assignments
+        for i = 1, 12 do
+            RaidAssignments.Marks[i] = {}
+            for k, v in pairs(RaidAssignments.Frames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+        end
+        
+        -- Clear all heal assignments
+        for i = 1, 12 do
+            for k = 1, 6 do
+                RaidAssignments.HealMarks[i][k] = nil
+            end
+            for k, v in pairs(RaidAssignments.HealFrames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+        end
+        
+        -- Clear all general assignments
+        for i = 1, 10 do
+            local maxSlots = (i >= 9 and i <= 10) and 7 or 5
+            for k = 1, maxSlots do
+                RaidAssignments.GeneralMarks[i][k] = nil
+            end
+            for k, v in pairs(RaidAssignments.GeneralFrames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+        end
+        
+        RaidAssignments:UpdateTanks()
+        RaidAssignments:UpdateHeals()
+        RaidAssignments:UpdateGeneral()
+        RaidAssignments:SendTanks()
+        RaidAssignments:SendHeals()
+        RaidAssignments:SendGeneral()
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments|r: All assignments cleared from all frames")
+    end)
+	
     -- KT Image Button
     self.ktButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
     self.ktButton:SetPoint("BOTTOM", -440, 10) -- Moved further left
@@ -860,6 +949,37 @@ end
     
     -- Update Minimap Position
     self:UpdateMinimapPosition()
+	
+    -- === UI Scale Buttons ===
+    -- Increase UI Size Button [+]
+    self.IncreaseScaleButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.IncreaseScaleButton:SetPoint("TOPRIGHT", self.masterResetButton, "TOPLEFT", -10, 0)
+    self.IncreaseScaleButton:SetWidth(24)
+    self.IncreaseScaleButton:SetHeight(24)
+    self.IncreaseScaleButton:SetText("+")
+    self.IncreaseScaleButton:SetScript("OnClick", function()
+        local currentScale = RaidAssignments:GetScale()
+        local newScale = math.min(currentScale + 0.1, 2.0) -- Max 200%
+        RaidAssignments:SetScale(newScale)
+        RaidAssignments_Settings["UIScale"] = newScale  -- ✅ Save new scale
+        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffC79C6E[UI]|r Scale increased to %.1f", newScale))
+    end)
+
+    -- Decrease UI Size Button [-]
+    self.DecreaseScaleButton = CreateFrame("Button", nil, self.bg, "UIPanelButtonTemplate")
+    self.DecreaseScaleButton:SetPoint("RIGHT", self.IncreaseScaleButton, "LEFT", -5, 0)
+    self.DecreaseScaleButton:SetWidth(24)
+    self.DecreaseScaleButton:SetHeight(24)
+    self.DecreaseScaleButton:SetText("-")
+    self.DecreaseScaleButton:SetScript("OnClick", function()
+        local currentScale = RaidAssignments:GetScale()
+        local newScale = math.max(currentScale - 0.1, 0.5) -- Min 50%
+        RaidAssignments:SetScale(newScale)
+        RaidAssignments_Settings["UIScale"] = newScale  -- ✅ Save new scale
+        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffC79C6E[UI]|r Scale decreased to %.1f", newScale))
+    end)
+
+
     
     self.bg:Hide()
     self:Hide()
@@ -963,7 +1083,7 @@ function RaidAssignments:ConfigGeneralFrame()
     self.generalText:SetShadowOffset(2,-2)
     self.generalText:SetText("General Assignments")
 
-    local classIconStartX, classIconY, i = 50, -45, 1
+    local classIconStartX, classIconY, i = -10, -10, 1
     for n, class in pairs(RaidAssignments.Classes) do
         local r, l, t, b = RaidAssignments:ClassPos(class)
         local classframe = CreateFrame("Button", class, self.generalBg)
@@ -1084,6 +1204,32 @@ end
         RaidAssignments.Settings["GeneralFrame"] = false
     end)
 
+    -- Reset All Button for General Frame
+    self.generalResetAllButton = CreateFrame("Button", nil, self.generalBg, "UIPanelButtonTemplate")
+    self.generalResetAllButton:SetPoint("TOPRIGHT", self.generalCloseButton, "TOPLEFT", -10, -5)
+    self.generalResetAllButton:SetWidth(80)
+    self.generalResetAllButton:SetHeight(24)
+    self.generalResetAllButton:SetText("Reset All")
+    self.generalResetAllButton:SetScript("OnClick", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        -- Clear all general assignments
+        for i = 1, 10 do
+            local maxSlots = (i >= 9 and i <= 10) and 7 or 5
+            for k = 1, maxSlots do
+                RaidAssignments.GeneralMarks[i][k] = nil
+            end
+            for k, v in pairs(RaidAssignments.GeneralFrames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+        end
+        
+        RaidAssignments:UpdateGeneral()
+        RaidAssignments:SendGeneral()
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments|r: All general assignments cleared")
+    end)
+
     -- Button to open Raid Assignments window
     self.openRaidAssignmentsButton = CreateFrame("Button", nil, self.generalBg, "UIPanelButtonTemplate")
     self.openRaidAssignmentsButton:SetPoint("BOTTOM", 75, 65) -- Position to the left of Post Marks button
@@ -1147,7 +1293,8 @@ function RaidAssignments:UpdateGeneral()
             end
 
             -- Remove players no longer in raid
-            for k = 1, 5 do
+            local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+            for k = 1, maxSlots do
                 local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
                 if v and not RaidAssignments:IsInRaid(v) then
                     RaidAssignments.GeneralMarks[i][k] = nil
@@ -1155,7 +1302,7 @@ function RaidAssignments:UpdateGeneral()
             end
 
             -- Show frames for assigned players in correct slots
-            for slot = 1, 5 do
+            for slot = 1, maxSlots do
                 local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][slot]
                 if v then
                     -- Create frame if it doesn't exist
@@ -1163,7 +1310,7 @@ function RaidAssignments:UpdateGeneral()
                         RaidAssignments.GeneralFrames[i][v] = RaidAssignments:AddGeneralFrame(v, i)
                     end
                     local frame = RaidAssignments.GeneralFrames[i][v]
-                    frame:SetPoint("RIGHT", 10 + (105 * slot), 0)
+                    frame:SetPoint("RIGHT", 5 + (85 * slot), 0)  -- Reduced spacing
                     frame.texture:SetWidth(frame:GetWidth() - 4)
                     frame.texture:SetVertexColor(RaidAssignments:GetClassColors(v, "rgb"))
                     frame:Show()
@@ -1182,10 +1329,17 @@ function RaidAssignments:UpdateGeneral()
                     v:Hide()
                 end
             end
-            RaidAssignments.GeneralMarks[i] = {}
+            -- Clear all slots properly
+            local maxSlots = (i >= 9 and i <= 10) and 7 or 5
+            for k = 1, maxSlots do
+                if RaidAssignments.GeneralMarks[i] then
+                    RaidAssignments.GeneralMarks[i][k] = nil
+                end
+            end
         end
     end
 end
+
 function RaidAssignments:WhisperAssignments()
     if not IsRaidOfficer("player") then
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: You must be a raid officer to whisper assignments")
@@ -1597,7 +1751,7 @@ function RaidAssignments:UpdateTanks()
                 index = index + 1
                 RaidAssignments.Frames[i][v] = RaidAssignments.Frames[i][v] or RaidAssignments:AddTankFrame(v,i)
                 local frame = RaidAssignments.Frames[i][v]
-                frame:SetPoint("RIGHT", 10 + (105 * index), 0)
+                frame:SetPoint("RIGHT", 5 + (85 * index), 0)  -- Reduced spacing
 
                 -- Always full width
                 frame.texture:SetWidth(frame:GetWidth() - 4)
@@ -1625,20 +1779,31 @@ end
 
 function RaidAssignments:UpdateHeals()
     if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
-        -- Hide old frames
+        -- Hide old frames first
         for i=1,12 do
             for k,v in pairs(RaidAssignments.HealFrames[i]) do
                 v:Hide()
             end
         end
+        
+        -- Remove players not in raid anymore from heal marks
+        for i=1,12 do
+            for k=1,6 do
+                local name = RaidAssignments.HealMarks[i][k]
+                if name and not RaidAssignments:IsInRaid(name) then
+                    RaidAssignments.HealMarks[i][k] = nil
+                end
+            end
+        end
+        
         -- Show healers
         for i=1,12 do
-            for k=1,4 do
+            for k=1,6 do
                 local name = RaidAssignments.HealMarks[i][k]
                 if name then
                     RaidAssignments.HealFrames[i][name] = RaidAssignments.HealFrames[i][name] or RaidAssignments:AddHealFrame(name, i)
                     local frame = RaidAssignments.HealFrames[i][name]
-                    frame:SetPoint("RIGHT", 10 + (105 * k), 0)
+                    frame:SetPoint("RIGHT", 5 + (85 * k), 0)  -- Reduced spacing
 
                     -- Always full width
                     frame.texture:SetWidth(frame:GetWidth() - 4)
@@ -1646,6 +1811,19 @@ function RaidAssignments:UpdateHeals()
                     frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
                     frame:Show()
                 end
+            end
+        end
+    else
+        -- Hide all frames and clear marks if not in raid
+        for i=1,12 do
+            for k,v in pairs(RaidAssignments.HealFrames[i]) do
+                if v:IsVisible() then
+                    v:Hide()
+                end
+            end
+            -- Clear all 6 slots
+            for k=1,6 do
+                RaidAssignments.HealMarks[i][k] = nil
             end
         end
     end
@@ -1679,7 +1857,7 @@ function RaidAssignments:SendHeals()
     if IsRaidOfficer("player") then
         local sendstring = ""
         for mark = 1, 12 do
-            for slot = 1, 4 do
+            for slot = 1, 6 do  -- Changed from 4 to 6
                 local v = RaidAssignments.HealMarks[mark][slot]
                 if v then
                     -- Use underscore separators
@@ -1703,7 +1881,9 @@ function RaidAssignments:SendGeneral()
         local sendstring = ""
         for mark = 1, 10 do
             if RaidAssignments.GeneralMarks[mark] then
-                for slot, v in pairs(RaidAssignments.GeneralMarks[mark]) do
+                local maxSlots = (mark >= 9 and mark <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+                for slot = 1, maxSlots do
+                    local v = RaidAssignments.GeneralMarks[mark][slot]
                     if v and type(slot) == "number" then
                         -- Use simple concatenation without special characters
                         sendstring = sendstring .. mark .. "_" .. slot .. "_" .. v .. ","
@@ -1727,13 +1907,14 @@ function RaidAssignments:OpenToolTip(frameName)
         
         -- Don't show tooltip if curse mark already has 1 player assigned
         if n >= 9 and n <= 12 and assignedCount >= 1 then
-            -- REMOVED DEBUG MESSAGE - just return silently
             return
         end
         
         local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
         local numMembers = RaidAssignments.TestMode and table.getn(RaidAssignments.TestRoster) or GetNumRaidMembers()
         
+        -- Collect eligible players
+        local eligiblePlayers = {}
         for i = 1, numMembers do
             local name, class
             if RaidAssignments.TestMode then
@@ -1761,39 +1942,125 @@ function RaidAssignments:OpenToolTip(frameName)
                     -- SPECIAL HANDLING FOR CURSE MARKS (9-12): Only show Warlocks
                     if n >= 9 and n <= 12 then
                         if class == "Warlock" and RaidAssignments_Settings[class] == 1 then
-                            index = index + 1
-                            RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
-                            local frame = RaidAssignments.Frames["ToolTip"][name]
-                            frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", 2, 25 + (-25 * index))
-                            frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
-                            frame:Show()
+                            table.insert(eligiblePlayers, name)
                         end
                     else
                         -- Regular marks (1-8): Show all enabled classes
                         if RaidAssignments_Settings[class] == 1 then
-                            index = index + 1
-                            RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
-                            local frame = RaidAssignments.Frames["ToolTip"][name]
-                            frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", 2, 25 + (-25 * index))
-                            frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
-                            frame:Show()
+                            table.insert(eligiblePlayers, name)
                         end
                     end
                 end
             end
         end
         
-        RaidAssignments.Settings["active"] = n
-        RaidAssignments.ToolTip:SetBackdrop({bgFile = "Interface/Tooltips/UI-Tooltip-Background"})
+        -- Calculate columns
+        local totalPlayers = table.getn(eligiblePlayers)
+        if totalPlayers == 0 then return end
+        
+        local maxPlayersPerColumn = 10
+        local numColumns = math.ceil(totalPlayers / maxPlayersPerColumn)
+        local playersPerColumn = math.ceil(totalPlayers / numColumns)
+        local actualRows = math.min(playersPerColumn, totalPlayers)
+        
+        -- Create columns
+        local columnWidth = 80  -- Reduced from 102 to 80
+        local totalWidth = columnWidth * numColumns
+        local totalHeight = 25 * actualRows
+        
+        -- Set up the tooltip backdrop first
+        RaidAssignments.ToolTip:SetBackdrop({
+            bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+            tile = false,
+            tileSize = 16,
+            edgeSize = 2,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 }
+        })
         RaidAssignments.ToolTip:SetBackdropColor(0, 0, 0, 1)
-        RaidAssignments.ToolTip:SetWidth(102)
-        RaidAssignments.ToolTip:SetHeight(25 * index)
-        RaidAssignments.ToolTip:SetPoint("TOPLEFT", frameName, "TOPLEFT", -100, 0)
+        RaidAssignments.ToolTip:SetBackdropBorderColor(1, 1, 1, 0.5)
+        RaidAssignments.ToolTip:SetWidth(totalWidth)
+        RaidAssignments.ToolTip:SetHeight(totalHeight)
+        RaidAssignments.ToolTip:SetPoint("TOPRIGHT", frameName, "TOPLEFT", 0, 0)
         RaidAssignments.ToolTip:EnableMouse(true)
+        RaidAssignments.ToolTip:EnableMouseWheel(true)
+        
+        -- Store the original mark frame for reference
+        RaidAssignments.ToolTip.originalMark = _G[frameName]
+        RaidAssignments.ToolTip.isVisible = true
+        
+        -- Simple OnLeave that hides the tooltip
         RaidAssignments.ToolTip:SetScript("OnLeave", function()
-            RaidAssignments.ToolTip:Hide()
+            if this.isVisible then
+                this.isVisible = false
+                this:Hide()
+            end
         end)
+        
+        -- Also set OnLeave for the original mark frame with simple delay
+        if RaidAssignments.ToolTip.originalMark then
+            RaidAssignments.ToolTip.originalMark.tooltipDelay = 0
+            RaidAssignments.ToolTip.originalMark.lastUpdate = GetTime()
+            RaidAssignments.ToolTip.originalMark:SetScript("OnLeave", function()
+                this.tooltipDelay = 0.1  -- 0.1 second delay
+                this.lastUpdate = GetTime()
+                this:SetScript("OnUpdate", function()
+                    local currentTime = GetTime()
+                    local elapsed = currentTime - this.lastUpdate
+                    this.lastUpdate = currentTime
+                    
+                    this.tooltipDelay = this.tooltipDelay - elapsed
+                    if this.tooltipDelay <= 0 then
+                        this:SetScript("OnUpdate", nil)
+                        if RaidAssignments.ToolTip.isVisible then
+                            local mouseFocus = GetMouseFocus()
+                            local shouldHide = true
+                            
+                            -- Check if mouse is over tooltip or mark
+                            if mouseFocus == RaidAssignments.ToolTip or mouseFocus == RaidAssignments.ToolTip.originalMark then
+                                shouldHide = false
+                            else
+                                -- Check parent hierarchy
+                                local parent = mouseFocus and mouseFocus:GetParent()
+                                while parent do
+                                    if parent == RaidAssignments.ToolTip or parent == RaidAssignments.ToolTip.originalMark then
+                                        shouldHide = false
+                                        break
+                                    end
+                                    parent = parent:GetParent()
+                                end
+                            end
+                            
+                            if shouldHide then
+                                RaidAssignments.ToolTip.isVisible = false
+                                RaidAssignments.ToolTip:Hide()
+                            end
+                        end
+                    end
+                end)
+            end)
+        end
+        
         RaidAssignments.ToolTip:SetFrameStrata("HIGH")
+        
+        -- Now create the player frames
+        for col = 1, numColumns do
+            local startIndex = (col - 1) * playersPerColumn + 1
+            local endIndex = math.min(startIndex + playersPerColumn - 1, totalPlayers)
+            
+            for i = startIndex, endIndex do
+                local name = eligiblePlayers[i]
+                local rowIndex = i - startIndex
+                
+                RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
+                local frame = RaidAssignments.Frames["ToolTip"][name]
+                frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
+                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                frame:Show()
+            end
+        end
+        
+        RaidAssignments.Settings["active"] = n
         RaidAssignments.ToolTip:Show()
     end
 end
@@ -1803,10 +2070,12 @@ function RaidAssignments:OpenHealToolTip(frameName)
         for k, v in pairs(RaidAssignments.Frames["HealToolTip"]) do
             v:Hide()
         end
-        local index = 0
         local n = tonumber(string.sub(frameName, 2))
         local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
         local numMembers = RaidAssignments.TestMode and table.getn(RaidAssignments.TestRoster) or GetNumRaidMembers()
+        
+        -- Collect eligible players
+        local eligiblePlayers = {}
         for i = 1, numMembers do
             local name, class
             if RaidAssignments.TestMode then
@@ -1829,26 +2098,118 @@ function RaidAssignments:OpenHealToolTip(frameName)
                     if f then break end
                 end
                 if not f and RaidAssignments.RoleFilter.Healer[class] then
-                    index = index + 1
-                    RaidAssignments.Frames["HealToolTip"][name] = RaidAssignments.Frames["HealToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.HealToolTip)
-                    local frame = RaidAssignments.Frames["HealToolTip"][name]
-                    frame:SetPoint("TOPLEFT", RaidAssignments.HealToolTip, "TOPLEFT", 2, 25 + (-25 * index))
-                    frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
-                    frame:Show()
+                    table.insert(eligiblePlayers, name)
                 end
             end
         end
-        RaidAssignments.Settings["active_heal"] = n
-        RaidAssignments.HealToolTip:SetBackdrop({bgFile = "Interface/Tooltips/UI-Tooltip-Background"})
+        
+        -- Calculate columns
+        local totalPlayers = table.getn(eligiblePlayers)
+        if totalPlayers == 0 then return end
+        
+        local maxPlayersPerColumn = 10
+        local numColumns = math.ceil(totalPlayers / maxPlayersPerColumn)
+        local playersPerColumn = math.ceil(totalPlayers / numColumns)
+        local actualRows = math.min(playersPerColumn, totalPlayers)
+        
+        -- Create columns
+        local columnWidth = 80  -- Reduced from 102 to 80
+        local totalWidth = columnWidth * numColumns
+        local totalHeight = 25 * actualRows
+        
+        -- Set up the tooltip backdrop first
+        RaidAssignments.HealToolTip:SetBackdrop({
+            bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+            tile = false,
+            tileSize = 16,
+            edgeSize = 2,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 }
+        })
         RaidAssignments.HealToolTip:SetBackdropColor(0, 0, 0, 1)
-        RaidAssignments.HealToolTip:SetWidth(102)
-        RaidAssignments.HealToolTip:SetHeight(25 * index)
-        RaidAssignments.HealToolTip:SetPoint("TOPLEFT", frameName, "TOPLEFT", -100, 0)
+        RaidAssignments.HealToolTip:SetBackdropBorderColor(1, 1, 1, 0.5)
+        RaidAssignments.HealToolTip:SetWidth(totalWidth)
+        RaidAssignments.HealToolTip:SetHeight(totalHeight)
+        RaidAssignments.HealToolTip:SetPoint("TOPRIGHT", frameName, "TOPLEFT", 0, 0)
         RaidAssignments.HealToolTip:EnableMouse(true)
+        RaidAssignments.HealToolTip:EnableMouseWheel(true)
+        
+        -- Store the original mark frame for reference
+        RaidAssignments.HealToolTip.originalMark = _G[frameName]
+        RaidAssignments.HealToolTip.isVisible = true
+        
+        -- Simple OnLeave that hides the tooltip
         RaidAssignments.HealToolTip:SetScript("OnLeave", function()
-            RaidAssignments.HealToolTip:Hide()
+            if this.isVisible then
+                this.isVisible = false
+                this:Hide()
+            end
         end)
+        
+        -- Also set OnLeave for the original mark frame with simple delay
+        if RaidAssignments.HealToolTip.originalMark then
+            RaidAssignments.HealToolTip.originalMark.tooltipDelay = 0
+            RaidAssignments.HealToolTip.originalMark.lastUpdate = GetTime()
+            RaidAssignments.HealToolTip.originalMark:SetScript("OnLeave", function()
+                this.tooltipDelay = 0.1  -- 0.1 second delay
+                this.lastUpdate = GetTime()
+                this:SetScript("OnUpdate", function()
+                    local currentTime = GetTime()
+                    local elapsed = currentTime - this.lastUpdate
+                    this.lastUpdate = currentTime
+                    
+                    this.tooltipDelay = this.tooltipDelay - elapsed
+                    if this.tooltipDelay <= 0 then
+                        this:SetScript("OnUpdate", nil)
+                        if RaidAssignments.HealToolTip.isVisible then
+                            local mouseFocus = GetMouseFocus()
+                            local shouldHide = true
+                            
+                            -- Check if mouse is over tooltip or mark
+                            if mouseFocus == RaidAssignments.HealToolTip or mouseFocus == RaidAssignments.HealToolTip.originalMark then
+                                shouldHide = false
+                            else
+                                -- Check parent hierarchy
+                                local parent = mouseFocus and mouseFocus:GetParent()
+                                while parent do
+                                    if parent == RaidAssignments.HealToolTip or parent == RaidAssignments.HealToolTip.originalMark then
+                                        shouldHide = false
+                                        break
+                                    end
+                                    parent = parent:GetParent()
+                                end
+                            end
+                            
+                            if shouldHide then
+                                RaidAssignments.HealToolTip.isVisible = false
+                                RaidAssignments.HealToolTip:Hide()
+                            end
+                        end
+                    end
+                end)
+            end)
+        end
+        
         RaidAssignments.HealToolTip:SetFrameStrata("HIGH")
+        
+        -- Now create the player frames
+        for col = 1, numColumns do
+            local startIndex = (col - 1) * playersPerColumn + 1
+            local endIndex = math.min(startIndex + playersPerColumn - 1, totalPlayers)
+            
+            for i = startIndex, endIndex do
+                local name = eligiblePlayers[i]
+                local rowIndex = i - startIndex
+                
+                RaidAssignments.Frames["HealToolTip"][name] = RaidAssignments.Frames["HealToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.HealToolTip)
+                local frame = RaidAssignments.Frames["HealToolTip"][name]
+                frame:SetPoint("TOPLEFT", RaidAssignments.HealToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
+                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                frame:Show()
+            end
+        end
+        
+        RaidAssignments.Settings["active_heal"] = n
         RaidAssignments.HealToolTip:Show()
     end
 end
@@ -1858,10 +2219,12 @@ function RaidAssignments:OpenGeneralToolTip(frameName)
         for k, v in pairs(RaidAssignments.Frames["GeneralToolTip"]) do
             v:Hide()
         end
-        local index = 0
         local n = tonumber(string.sub(frameName, 2))
         local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
         local numMembers = RaidAssignments.TestMode and table.getn(RaidAssignments.TestRoster) or GetNumRaidMembers()
+        
+        -- Collect eligible players
+        local eligiblePlayers = {}
         for i = 1, numMembers do
             local name, class
             if RaidAssignments.TestMode then
@@ -1884,26 +2247,118 @@ function RaidAssignments:OpenGeneralToolTip(frameName)
                     if f then break end
                 end
                 if not f and RaidAssignments_Settings[class] == 1 then
-                    index = index + 1
-                    RaidAssignments.Frames["GeneralToolTip"][name] = RaidAssignments.Frames["GeneralToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.GeneralToolTip)
-                    local frame = RaidAssignments.Frames["GeneralToolTip"][name]
-                    frame:SetPoint("TOPLEFT", RaidAssignments.GeneralToolTip, "TOPLEFT", 2, 25 + (-25 * index))
-                    frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
-                    frame:Show()
+                    table.insert(eligiblePlayers, name)
                 end
             end
         end
-        RaidAssignments.Settings["active_general"] = n
-        RaidAssignments.GeneralToolTip:SetBackdrop({bgFile = "Interface/Tooltips/UI-Tooltip-Background"})
+        
+        -- Calculate columns
+        local totalPlayers = table.getn(eligiblePlayers)
+        if totalPlayers == 0 then return end
+        
+        local maxPlayersPerColumn = 10
+        local numColumns = math.ceil(totalPlayers / maxPlayersPerColumn)
+        local playersPerColumn = math.ceil(totalPlayers / numColumns)
+        local actualRows = math.min(playersPerColumn, totalPlayers)
+        
+        -- Create columns
+        local columnWidth = 80  -- Reduced from 102 to 80
+        local totalWidth = columnWidth * numColumns
+        local totalHeight = 25 * actualRows
+        
+        -- Set up the tooltip backdrop first
+        RaidAssignments.GeneralToolTip:SetBackdrop({
+            bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+            tile = false,
+            tileSize = 16,
+            edgeSize = 2,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 }
+        })
         RaidAssignments.GeneralToolTip:SetBackdropColor(0, 0, 0, 1)
-        RaidAssignments.GeneralToolTip:SetWidth(102)
-        RaidAssignments.GeneralToolTip:SetHeight(25 * index)
-        RaidAssignments.GeneralToolTip:SetPoint("TOPLEFT", frameName, "TOPLEFT", -100, 0)
+        RaidAssignments.GeneralToolTip:SetBackdropBorderColor(1, 1, 1, 0.5)
+        RaidAssignments.GeneralToolTip:SetWidth(totalWidth)
+        RaidAssignments.GeneralToolTip:SetHeight(totalHeight)
+        RaidAssignments.GeneralToolTip:SetPoint("TOPRIGHT", frameName, "TOPLEFT", 0, 0)
         RaidAssignments.GeneralToolTip:EnableMouse(true)
+        RaidAssignments.GeneralToolTip:EnableMouseWheel(true)
+        
+        -- Store the original mark frame for reference
+        RaidAssignments.GeneralToolTip.originalMark = _G[frameName]
+        RaidAssignments.GeneralToolTip.isVisible = true
+        
+        -- Simple OnLeave that hides the tooltip
         RaidAssignments.GeneralToolTip:SetScript("OnLeave", function()
-            RaidAssignments.GeneralToolTip:Hide()
+            if this.isVisible then
+                this.isVisible = false
+                this:Hide()
+            end
         end)
+        
+        -- Also set OnLeave for the original mark frame with simple delay
+        if RaidAssignments.GeneralToolTip.originalMark then
+            RaidAssignments.GeneralToolTip.originalMark.tooltipDelay = 0
+            RaidAssignments.GeneralToolTip.originalMark.lastUpdate = GetTime()
+            RaidAssignments.GeneralToolTip.originalMark:SetScript("OnLeave", function()
+                this.tooltipDelay = 0.1  -- 0.1 second delay
+                this.lastUpdate = GetTime()
+                this:SetScript("OnUpdate", function()
+                    local currentTime = GetTime()
+                    local elapsed = currentTime - this.lastUpdate
+                    this.lastUpdate = currentTime
+                    
+                    this.tooltipDelay = this.tooltipDelay - elapsed
+                    if this.tooltipDelay <= 0 then
+                        this:SetScript("OnUpdate", nil)
+                        if RaidAssignments.GeneralToolTip.isVisible then
+                            local mouseFocus = GetMouseFocus()
+                            local shouldHide = true
+                            
+                            -- Check if mouse is over tooltip or mark
+                            if mouseFocus == RaidAssignments.GeneralToolTip or mouseFocus == RaidAssignments.GeneralToolTip.originalMark then
+                                shouldHide = false
+                            else
+                                -- Check parent hierarchy
+                                local parent = mouseFocus and mouseFocus:GetParent()
+                                while parent do
+                                    if parent == RaidAssignments.GeneralToolTip or parent == RaidAssignments.GeneralToolTip.originalMark then
+                                        shouldHide = false
+                                        break
+                                    end
+                                    parent = parent:GetParent()
+                                end
+                            end
+                            
+                            if shouldHide then
+                                RaidAssignments.GeneralToolTip.isVisible = false
+                                RaidAssignments.GeneralToolTip:Hide()
+                            end
+                        end
+                    end
+                end)
+            end)
+        end
+        
         RaidAssignments.GeneralToolTip:SetFrameStrata("HIGH")
+        
+        -- Now create the player frames
+        for col = 1, numColumns do
+            local startIndex = (col - 1) * playersPerColumn + 1
+            local endIndex = math.min(startIndex + playersPerColumn - 1, totalPlayers)
+            
+            for i = startIndex, endIndex do
+                local name = eligiblePlayers[i]
+                local rowIndex = i - startIndex
+                
+                RaidAssignments.Frames["GeneralToolTip"][name] = RaidAssignments.Frames["GeneralToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.GeneralToolTip)
+                local frame = RaidAssignments.Frames["GeneralToolTip"][name]
+                frame:SetPoint("TOPLEFT", RaidAssignments.GeneralToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
+                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                frame:Show()
+            end
+        end
+        
+        RaidAssignments.Settings["active_general"] = n
         RaidAssignments.GeneralToolTip:Show()
     end
 end
@@ -1936,15 +2391,15 @@ function RaidAssignments:AddTank(name, mark)
 
     local index = table.getn(RaidAssignments.Marks[mark]) + 1
     
-    -- Regular marks (1-8) can have up to 3 players, curses (9-12) only 1
-    if (mark <= 8 and index < 4) or (mark >= 9 and mark <= 12 and index < 2) then
+    -- Regular marks (1-8) can have up to 4 players (was 3), curses (9-12) only 1
+    if (mark <= 8 and index < 5) or (mark >= 9 and mark <= 12 and index < 2) then
         local unit = RaidAssignments:GetRaidID(name)
         local class = RaidAssignments.TestMode and RaidAssignments:GetTestClass(name) or UnitClass(unit)
 
         -- Create the tank frame if it doesn't exist yet
         RaidAssignments.Frames[mark][name] = RaidAssignments.Frames[mark][name] or RaidAssignments:AddTankFrame(name, mark)
         local frame = RaidAssignments.Frames[mark][name]
-        frame:SetPoint("RIGHT", 10 + (105 * index), 0)
+        frame:SetPoint("RIGHT", 5 + (85 * index), 0)  -- Reduced spacing
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
 
@@ -1961,7 +2416,7 @@ function RaidAssignments:AddHeal(name, mark)
     mark = tonumber(mark)
 
     -- Prevent assigning the same healer twice in the same mark
-    for i = 1, 4 do
+    for i = 1, 6 do  -- Changed from 4 to 6
         if RaidAssignments.HealMarks[mark][i] == name then
             -- REMOVED DEBUG MESSAGE
             return
@@ -1970,7 +2425,7 @@ function RaidAssignments:AddHeal(name, mark)
 
     local slot = nil
     -- Find first empty slot
-    for i = 1, 4 do
+    for i = 1, 6 do  -- Changed from 4 to 6
         if not RaidAssignments.HealMarks[mark][i] then
             slot = i
             break
@@ -1981,7 +2436,7 @@ function RaidAssignments:AddHeal(name, mark)
         RaidAssignments.HealFrames[mark][name] = RaidAssignments.HealFrames[mark][name] or RaidAssignments:AddHealFrame(name, mark)
         local frame = RaidAssignments.HealFrames[mark][name]
         local unit = RaidAssignments:GetRaidID(name)
-        frame:SetPoint("RIGHT", 10 + (105 * slot), 0)
+        frame:SetPoint("RIGHT", 5 + (85 * slot), 0)  -- Reduced spacing
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
         RaidAssignments.HealMarks[mark][slot] = name
@@ -2012,7 +2467,8 @@ function RaidAssignments:AddGeneral(name, mark)
 
     -- Find the first available slot
     local slot = nil
-    for i = 1, 5 do
+    local maxSlots = (mark >= 9 and mark <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+    for i = 1, maxSlots do
         if not RaidAssignments.GeneralMarks[mark][i] then
             slot = i
             break
@@ -2022,7 +2478,7 @@ function RaidAssignments:AddGeneral(name, mark)
     if slot then
         RaidAssignments.GeneralFrames[mark][name] = RaidAssignments.GeneralFrames[mark][name] or RaidAssignments:AddGeneralFrame(name, mark)
         local frame = RaidAssignments.GeneralFrames[mark][name]
-        frame:SetPoint("RIGHT", 10 + (105 * slot), 0)
+        frame:SetPoint("RIGHT", 5 + (85 * slot), 0)  -- Reduced spacing
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
         RaidAssignments.GeneralMarks[mark][slot] = name
@@ -2046,13 +2502,13 @@ function RaidAssignments:AddToolTipFrame(name, tooltip)
         insets = { left = 2, right = 2, top = 0, bottom = 0 }
     }
     
-    frame:SetWidth(100)
+    frame:SetWidth(80)  -- Reduced from 100 to 80
     frame:SetHeight(25)
     frame:SetBackdrop(backdrop)
     frame:SetBackdropColor(0, 0, 0, 0) -- Transparent background
     
     frame.texture = frame:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
+    frame.texture:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
     frame.texture:SetHeight(24)
     frame.texture:SetPoint("TOPLEFT", 2, -1)
     frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
@@ -2102,18 +2558,18 @@ function RaidAssignments:AddTankFrame(name, mark)
         insets = { left = 2, right = 2, top = 0, bottom = 0 }
     }
     frame:SetParent("T"..mark)
-    frame:SetWidth(100)
+    frame:SetWidth(80)  -- Reduced from 100 to 80
     frame:SetHeight(25)    
     
     -- hpbar without portrait gap
     frame.hpbar = CreateFrame("Button", nil, frame)
-    frame.hpbar:SetWidth(frame:GetWidth() - 4)
+    frame.hpbar:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
     frame.hpbar:SetHeight(24)
     frame.hpbar:SetPoint("TOPLEFT", 2, -1)
     frame.hpbar:SetFrameLevel(1)
     
     frame.texture = frame.hpbar:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
+    frame.texture:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
     frame.texture:SetHeight(24)
     frame.texture:SetPoint("TOPLEFT", 0, 0)
     frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
@@ -2125,10 +2581,6 @@ function RaidAssignments:AddTankFrame(name, mark)
     frame.name:SetTextColor(1, 1, 1, 1)
     frame.name:SetShadowOffset(1, -1)
     frame.name:SetText(name)
-
-    if frame.portrait then
-        frame.portrait:Hide()
-    end
 
     frame:SetScript("OnClick", function()
         if IsRaidOfficer("player") then
@@ -2163,17 +2615,17 @@ function RaidAssignments:AddHealFrame(name, mark)
         insets = { left = 2, right = 2, top = 0, bottom = 0 }
     }
     frame:SetParent("H"..mark)
-    frame:SetWidth(100)
+    frame:SetWidth(80)  -- Reduced from 100 to 80
     frame:SetHeight(25)    
     
     frame.hpbar = CreateFrame("Button", nil, frame)
-    frame.hpbar:SetWidth(frame:GetWidth() - 4)
+    frame.hpbar:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
     frame.hpbar:SetHeight(24)
     frame.hpbar:SetPoint("TOPLEFT", 2, -1)
     frame.hpbar:SetFrameLevel(1)
     
     frame.texture = frame.hpbar:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
+    frame.texture:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
     frame.texture:SetHeight(24)
     frame.texture:SetPoint("TOPLEFT", 0, 0)
     frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
@@ -2186,22 +2638,18 @@ function RaidAssignments:AddHealFrame(name, mark)
     frame.name:SetShadowOffset(1, -1)
     frame.name:SetText(name)
 
-    if frame.portrait then
-        frame.portrait:Hide()
-    end
-
     frame:SetScript("OnClick", function()
         if IsRaidOfficer("player") then
-            for k = 1, 4 do
+            for k = 1, 6 do  -- Changed from 4 to 6 to handle all slots
                 if RaidAssignments.HealMarks[mark][k] == name then
                     RaidAssignments.HealMarks[mark][k] = nil
                     this:Hide()
                     RaidAssignments.HealFrames[mark][name] = nil -- clear cached frame
                     RaidAssignments:UpdateHeals()
+                    RaidAssignments:SendHeals()  -- Make sure to send updates
                     break
                 end
             end
-            RaidAssignments:SendHeals()
         end
     end)
 
@@ -2211,6 +2659,7 @@ function RaidAssignments:AddHealFrame(name, mark)
     return frame
 end
 
+-- In the AddGeneralFrame function, update the OnClick script to handle all slots including slot 6 for custom marks
 function RaidAssignments:AddGeneralFrame(name, mark)
     local unit = RaidAssignments:GetRaidID(name)
     local frame = CreateFrame("Button", mark..name, RaidAssignments.generalBg)
@@ -2223,18 +2672,18 @@ function RaidAssignments:AddGeneralFrame(name, mark)
         insets = { left = 2, right = 2, top = 0, bottom = 0 }
     }
     frame:SetParent("G"..mark)
-    frame:SetWidth(100)
+    frame:SetWidth(80)  -- Reduced from 100 to 80
     frame:SetHeight(25)    
     
     -- hpbar without portrait gap
     frame.hpbar = CreateFrame("Button", nil, frame)
-    frame.hpbar:SetWidth(frame:GetWidth() - 4)
+    frame.hpbar:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
     frame.hpbar:SetHeight(24)
     frame.hpbar:SetPoint("TOPLEFT", 2, -1)
     frame.hpbar:SetFrameLevel(1)
     
     frame.texture = frame.hpbar:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
+    frame.texture:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
     frame.texture:SetHeight(24)
     frame.texture:SetPoint("TOPLEFT", 0, 0)
     frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
@@ -2247,24 +2696,24 @@ function RaidAssignments:AddGeneralFrame(name, mark)
     frame.name:SetShadowOffset(1, -1)
     frame.name:SetText(name)
 
-    if frame.portrait then
-        frame.portrait:Hide()
-    end
-
+    -- FIXED: Correct OnClick script to remove players from general assignments
     frame:SetScript("OnClick", function()
         if IsRaidOfficer("player") then
-            for slot = 1, 5 do
-                if RaidAssignments.GeneralMarks[mark] and RaidAssignments.GeneralMarks[mark][slot] == name then
-                    RaidAssignments.GeneralMarks[mark][slot] = nil
+            -- Remove from general assignments
+            local maxSlots = (mark >= 9 and mark <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+            for k = 1, maxSlots do
+                if RaidAssignments.GeneralMarks[mark] and RaidAssignments.GeneralMarks[mark][k] == name then
+                    RaidAssignments.GeneralMarks[mark][k] = nil
                     this:Hide()
                     RaidAssignments.GeneralFrames[mark][name] = nil -- clear cached frame
                     RaidAssignments:UpdateGeneral()
-                    RaidAssignments:SendGeneral() -- Broadcast the updated GeneralMarks
+                    RaidAssignments:SendGeneral()
                     break
                 end
             end
         end
     end)
+    
     frame.unit = unit
     frame:SetScript("OnEnter", UnitFrame_OnEnter)
     frame:SetScript("OnLeave", UnitFrame_OnLeave)
@@ -2654,7 +3103,7 @@ function RaidAssignments:PostHealAssignments()
     if RaidAssignments_Settings["usecolors"] then
         -- Heals
         for i = 1, 12 do
-            for k = 1, 4 do
+            for k = 1, 6 do  -- Changed from 4 to 6
                 if RaidAssignments.HealMarks[i][k] then
                     n = true
                     break
@@ -2667,7 +3116,7 @@ function RaidAssignments:PostHealAssignments()
             while i > 0 do
                 local text = RaidAssignments.HealRealMarks[i]
                 local hasHealers = false
-                for k = 1, 4 do
+                for k = 1, 6 do  -- Changed from 4 to 6
                     if RaidAssignments.HealMarks[i][k] then
                         hasHealers = true
                         break
@@ -2675,12 +3124,12 @@ function RaidAssignments:PostHealAssignments()
                 end
                 if hasHealers then
                     text = text .. ": "
-                    for k = 1, 4 do
+                    for k = 1, 6 do  -- Changed from 4 to 6
                         local v = RaidAssignments.HealMarks[i][k]
                         if v then
                             text = text .. "(" .. k .. ") " .. RaidAssignments:GetClassColors(v, "cff")
                             local hasMore = false
-                            for m = k + 1, 4 do
+                            for m = k + 1, 6 do  -- Changed from 4 to 6
                                 if RaidAssignments.HealMarks[i][m] then
                                     hasMore = true
                                     break
@@ -2701,7 +3150,7 @@ function RaidAssignments:PostHealAssignments()
     else
         -- Heals (no colors)
         for i = 1, 12 do
-            for k = 1, 4 do
+            for k = 1, 6 do  -- Changed from 4 to 6
                 if RaidAssignments.HealMarks[i][k] then
                     n = true
                     break
@@ -2714,7 +3163,7 @@ function RaidAssignments:PostHealAssignments()
             while i > 0 do
                 local text = RaidAssignments.HealRealMarks[i]
                 local hasHealers = false
-                for k = 1, 4 do
+                for k = 1, 6 do  -- Changed from 4 to 6
                     if RaidAssignments.HealMarks[i][k] then
                         hasHealers = true
                         break
@@ -2722,12 +3171,12 @@ function RaidAssignments:PostHealAssignments()
                 end
                 if hasHealers then
                     text = text .. ": "
-                    for k = 1, 4 do
+                    for k = 1, 6 do  -- Changed from 4 to 6
                         local v = RaidAssignments.HealMarks[i][k]
                         if v then
                             text = text .. "(" .. k .. ") " .. v
                             local hasMore = false
-                            for m = k + 1, 4 do
+                            for m = k + 1, 6 do  -- Changed from 4 to 6
                                 if RaidAssignments.HealMarks[i][m] then
                                     hasMore = true
                                     break
@@ -2748,7 +3197,7 @@ function RaidAssignments:PostHealAssignments()
     end
     if RaidAssignments_Settings["useWhisper"] then
         for i = 1, 12 do
-            for k = 1, 4 do
+            for k = 1, 6 do  -- Changed from 4 to 6
                 local v = RaidAssignments.HealMarks[i][k]
                 if v and RaidAssignments:IsInRaid(v) then
                     local text = "You are assigned to heal " .. RaidAssignments.HealRealMarks[i] .. " (slot " .. k .. ")"
@@ -2766,10 +3215,11 @@ function RaidAssignments:PostGeneralAssignments()
     local n = false
 
     if RaidAssignments_Settings["usecolors"] then
-        for i = 1, 10 do -- Changed from 8 to 10 to include custom marks
+        for i = 1, 10 do
             if RaidAssignments.GeneralMarks[i] ~= nil then
                 local hasAssignments = false
-                for k = 1, 5 do
+                local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+                for k = 1, maxSlots do
                     if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
                         hasAssignments = true
                         n = true
@@ -2781,9 +3231,10 @@ function RaidAssignments:PostGeneralAssignments()
         if n then
             SendChatMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
-            while i <= 10 do -- Changed from 8 to 10
+            while i <= 10 do
+                local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
                 local hasAssignments = false
-                for k = 1, 5 do
+                for k = 1, maxSlots do
                     if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
                         hasAssignments = true
                         break
@@ -2810,7 +3261,7 @@ function RaidAssignments:PostGeneralAssignments()
                     
                     local text = markText .. ": "
                     local first = true
-                    for k = 1, 5 do
+                    for k = 1, maxSlots do
                         local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
                         if v then
                             if not first then
@@ -2827,10 +3278,12 @@ function RaidAssignments:PostGeneralAssignments()
             end
         end
     else
-        for i = 1, 10 do -- Changed from 8 to 10
+        -- Similar updates for non-colored version...
+        for i = 1, 10 do
             if RaidAssignments.GeneralMarks[i] ~= nil then
                 local hasAssignments = false
-                for k = 1, 5 do
+                local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+                for k = 1, maxSlots do
                     if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
                         hasAssignments = true
                         n = true
@@ -2842,9 +3295,10 @@ function RaidAssignments:PostGeneralAssignments()
         if n then
             SendChatMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
-            while i <= 10 do -- Changed from 8 to 10
+            while i <= 10 do
+                local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
                 local hasAssignments = false
-                for k = 1, 5 do
+                for k = 1, maxSlots do
                     if RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k] then
                         hasAssignments = true
                         break
@@ -2871,7 +3325,7 @@ function RaidAssignments:PostGeneralAssignments()
                     
                     local text = markText .. ": "
                     local first = true
-                    for k = 1, 5 do
+                    for k = 1, maxSlots do
                         local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
                         if v then
                             if not first then
@@ -2889,8 +3343,9 @@ function RaidAssignments:PostGeneralAssignments()
         end
     end
     if RaidAssignments_Settings["useWhisper"] then
-        for i = 1, 10 do -- Changed from 8 to 10
-            for k = 1, 5 do
+        for i = 1, 10 do
+            local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+            for k = 1, maxSlots do
                 local v = RaidAssignments.GeneralMarks[i] and RaidAssignments.GeneralMarks[i][k]
                 if v and RaidAssignments:IsInRaid(v) then
                     -- Get the mark text from the input box for custom marks, or use predefined names

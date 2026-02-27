@@ -4909,10 +4909,10 @@ RaidAssignments.MarkColors = {
 function RaidAssignments:CreateYourMarkFrame()
     if RaidAssignments.YourMarkFrame then return end
 
-    local ICON_SIZE = 25
-    local INFO_W    = 180   -- wide enough for long names
+    local ICON_SIZE = 32
+    local INFO_W    = 120   -- narrower to reduce HP bar length
     local BAR_H     = 8
-    local PAD       = 6
+    local PAD       = 8
     local FRAME_W   = PAD + ICON_SIZE + PAD + INFO_W + PAD
     local FRAME_H   = PAD + ICON_SIZE + PAD
 
@@ -5028,6 +5028,8 @@ function RaidAssignments:CreateYourMarkFrame()
     hpPct:SetPoint("RIGHT", barTrack, "RIGHT", -2, 0)
     hpPct:SetText("")
     hpPct:SetTextColor(1, 1, 1, 1)
+    hpPct:SetShadowColor(0, 0, 0, 1)
+    hpPct:SetShadowOffset(1, -1)
     frame.hpPct = hpPct
 
     -- ── Click ─────────────────────────────────────────────────────────

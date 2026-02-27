@@ -218,6 +218,9 @@ function RaidAssignments:OnEvent()
         if RaidAssignments_Settings["showYourMarkFrame"] == nil then
             RaidAssignments_Settings["showYourMarkFrame"] = true
         end
+        if RaidAssignments_Settings["markSound"] == nil then
+            RaidAssignments_Settings["markSound"] = true
+        end
 
         -- Initialize CustomRealMarks for all custom windows (1-8)
         RaidAssignments.CustomRealMarks = RaidAssignments.CustomRealMarks or {}
@@ -4928,7 +4931,7 @@ function RaidAssignments:CreateYourMarkFrame()
     frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
     frame:EnableMouseWheel(true)
     frame:SetScript("OnMouseWheel", function()
-        local f = RaidAssignments.YourMarkFrame
+        local f = frame
         local scale = f:GetScale()
         if arg1 > 0 then
             scale = math.min(scale + 0.05, 3.0)
@@ -5035,7 +5038,7 @@ function RaidAssignments:CreateYourMarkFrame()
     -- ── Click ─────────────────────────────────────────────────────────
     frame:SetScript("OnClick", function()
         if arg1 == "LeftButton" then
-            local mi = RaidAssignments.YourMarkFrame.assignedMarkIndex
+            local mi = frame.assignedMarkIndex
             if not mi then return end
             if UnitExists("mark"..mi) then
                 TargetUnit("mark"..mi)
@@ -5047,7 +5050,7 @@ function RaidAssignments:CreateYourMarkFrame()
     frame:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
-        local mi = RaidAssignments.YourMarkFrame.assignedMarkIndex
+        local mi = frame.assignedMarkIndex
         if mi then
             local mn = RaidAssignments.RealMarks[mi] or ("Mark "..mi)
             GameTooltip:AddLine("Your Mark: "..mn, 1, 1, 0.5)
@@ -5064,7 +5067,7 @@ function RaidAssignments:CreateYourMarkFrame()
 
     -- ── OnUpdate: live name + HP ──────────────────────────────────────
     frame:SetScript("OnUpdate", function()
-        local f = RaidAssignments.YourMarkFrame
+        local f = frame
         if not f or not f:IsShown() then return end
         local mi = f.assignedMarkIndex
         if not mi then return end
@@ -5095,6 +5098,48 @@ function RaidAssignments:CreateYourMarkFrame()
             f.hpBar:SetWidth(1)
         end
     end)
+
+    -- Sound toggle button (top-right corner, S=sound on, M=muted)
+    local soundBtn = CreateFrame("Button", nil, frame)
+    soundBtn:SetWidth(14)
+    soundBtn:SetHeight(14)
+    soundBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
+    soundBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
+
+    local soundBtnTex = soundBtn:CreateFontString(nil, "OVERLAY")
+    soundBtnTex:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 9)
+    soundBtnTex:SetAllPoints(soundBtn)
+    soundBtnTex:SetJustifyH("CENTER")
+    soundBtnTex:SetJustifyV("MIDDLE")
+    soundBtn.label = soundBtnTex
+
+    local function UpdateSoundBtn()
+        if RaidAssignments_Settings["markSound"] then
+            soundBtn.label:SetText("|cff88ff88S|r")
+        else
+            soundBtn.label:SetText("|cffff5555M|r")
+        end
+    end
+    UpdateSoundBtn()
+
+    soundBtn:SetScript("OnClick", function()
+        RaidAssignments_Settings["markSound"] = not RaidAssignments_Settings["markSound"]
+        UpdateSoundBtn()
+    end)
+    soundBtn:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        if RaidAssignments_Settings["markSound"] then
+            GameTooltip:AddLine("Mark sound: ON", 0.4, 1, 0.4)
+            GameTooltip:AddLine("Click to mute", 0.6, 0.6, 0.6)
+        else
+            GameTooltip:AddLine("Mark sound: OFF", 1, 0.4, 0.4)
+            GameTooltip:AddLine("Click to unmute", 0.6, 0.6, 0.6)
+        end
+        GameTooltip:Show()
+    end)
+    soundBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    frame.soundBtn = soundBtn
 
     frame.assignedMarkIndex = nil
     frame:Hide()
@@ -5173,7 +5218,9 @@ function RaidAssignments:UpdateYourMarkFrame()
             local clickLink = "|HRAmark:"..foundMark.."|h|cff00ccff"..linkText.."|r|h"
             msg = msg .. " -> " .. clickLink
             DEFAULT_CHAT_FRAME:AddMessage(msg)
-            PlaySoundFile("Interface\\AddOns\\RaidAssignments\\assets\\FFXIV_Incoming_Tell_1.mp3")
+            if RaidAssignments_Settings["markSound"] then
+                PlaySoundFile("Interface\\AddOns\\RaidAssignments\\assets\\FFXIV_Incoming_Tell_1.mp3")
+            end
         end
     else
         RaidAssignments.YourMarkFrame.assignedMarkIndex = nil

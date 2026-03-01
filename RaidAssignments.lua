@@ -1415,6 +1415,49 @@ function RaidAssignments:ConfigMainFrame()
     RaidAssignments._yourMarkToggle = self.yourMarkToggle
     -- Apply initial visual state (ON by default)
     RaidAssignments:UpdateYourMarkToggleState()
+
+    -- Sound toggle button: sits immediately left of the Your Mark button
+    self.markSoundToggle = RaidAssignments:MakeBtn(self.bg, 22, 22, "S", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        RaidAssignments_Settings["markSound"] = not RaidAssignments_Settings["markSound"]
+        RaidAssignments:UpdateMarkSoundToggleState()
+        -- Also update the mark frame's own sound button label if it exists
+        if RaidAssignments.YourMarkFrame and RaidAssignments.YourMarkFrame.soundBtn then
+            local sBtn = RaidAssignments.YourMarkFrame.soundBtn
+            if RaidAssignments_Settings["markSound"] then
+                sBtn.label:SetText("|cff88ff88S|r")
+            else
+                sBtn.label:SetText("|cffff5555M|r")
+            end
+        end
+    end)
+    self.markSoundToggle:SetPoint("RIGHT", self.yourMarkToggle, "LEFT", -4, 0)
+    RaidAssignments._markSoundToggle = self.markSoundToggle
+    RaidAssignments:UpdateMarkSoundToggleState()
+    self.markSoundToggle:SetScript("OnEnter", function()
+        self.markSoundToggle.glow:Show()
+        if RaidAssignments_Settings["markSound"] then
+            for _, ln in ipairs(self.markSoundToggle.borderLines) do ln:SetVertexColor(0.40, 1.00, 0.55, 1) end
+        else
+            for _, ln in ipairs(self.markSoundToggle.borderLines) do ln:SetVertexColor(0.95, 0.80, 0.30, 1) end
+        end
+        self.markSoundToggle.label:SetTextColor(1, 0.95, 0.50, 1)
+        GameTooltip:SetOwner(self.markSoundToggle, "ANCHOR_BOTTOM")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine("Mark Assignment Sound", 1, 1, 0.5)
+        if RaidAssignments_Settings["markSound"] then
+            GameTooltip:AddLine("Currently: ON  (click to mute)", 0.4, 1, 0.55)
+        else
+            GameTooltip:AddLine("Currently: OFF  (click to unmute)", 1, 0.45, 0.35)
+        end
+        GameTooltip:Show()
+    end)
+    self.markSoundToggle:SetScript("OnLeave", function()
+        self.markSoundToggle.glow:Hide()
+        RaidAssignments:UpdateMarkSoundToggleState()
+        GameTooltip:Hide()
+    end)
+
     self.yourMarkToggle:SetScript("OnEnter", function()
         self.yourMarkToggle.glow:Show()
         if RaidAssignments_Settings["showYourMarkFrame"] then
@@ -1461,7 +1504,7 @@ function RaidAssignments:ConfigMainFrame()
             DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments|r: Tank and heal assignments cleared")
         end)
     end)
-    self.resetAllButton:SetPoint("RIGHT", self.yourMarkToggle, "LEFT", -8, 0)
+    self.resetAllButton:SetPoint("RIGHT", self.markSoundToggle, "LEFT", -8, 0)
 
     self.masterResetButton = RaidAssignments:MakeBtn(self.bg, 88, 22, "Reset All", function()
         ShowConfirmDialog("Reset ALL assignments?", function()
@@ -5507,6 +5550,23 @@ function RaidAssignments:UpdateYourMarkToggleState()
     end
 end
 
+function RaidAssignments:UpdateMarkSoundToggleState()
+    local toggle = RaidAssignments._markSoundToggle
+    if not toggle then return end
+    local on = RaidAssignments_Settings["markSound"]
+    if on then
+        -- ON: green border, sound icon
+        for _, ln in ipairs(toggle.borderLines) do ln:SetVertexColor(0.25, 0.85, 0.40, 1) end
+        toggle.bg:SetVertexColor(0.04, 0.12, 0.06, 0.95)
+        toggle.label:SetTextColor(0.45, 1.00, 0.58, 1)
+    else
+        -- OFF: dim red border, muted
+        for _, ln in ipairs(toggle.borderLines) do ln:SetVertexColor(0.55, 0.18, 0.18, 1) end
+        toggle.bg:SetVertexColor(0.12, 0.04, 0.04, 0.95)
+        toggle.label:SetTextColor(0.75, 0.35, 0.35, 1)
+    end
+end
+
 function RaidAssignments:SendCustomWindowTitle(i)
     if not (RaidAssignments.TestMode or IsRaidOfficer()) then
         return
@@ -5909,6 +5969,8 @@ function RaidAssignments:CreateYourMarkFrame()
     soundBtn:SetScript("OnClick", function()
         RaidAssignments_Settings["markSound"] = not RaidAssignments_Settings["markSound"]
         UpdateSoundBtn()
+        -- Sync back to the main panel sound toggle
+        RaidAssignments:UpdateMarkSoundToggleState()
     end)
     soundBtn:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")

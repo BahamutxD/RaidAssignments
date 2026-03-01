@@ -326,6 +326,64 @@ local function SeqDecode(raw)
     return 1, raw
 end
 
+-- ─── Roster cache ────────────────────────────────────────────────────────────
+-- Rebuilt on RAID_ROSTER_UPDATE so GetClassColors / IsInRaid are O(1) lookups
+-- instead of iterating up to 40 UnitName/UnitClass calls per query.
+-- _rosterCache[name] = class  (string, e.g. "Warrior")
+-- _rosterSet[name]   = true   (for fast IsInRaid checks)
+RaidAssignments._rosterCache = {}
+RaidAssignments._rosterSet   = {}
+
+function RaidAssignments:RebuildRosterCache()
+    local cache = {}
+    local rset  = {}
+
+    -- Always include the player themselves
+    local pName  = UnitName("player")
+    local pClass = UnitClass("player")
+    if pName then
+        cache[pName] = pClass
+        rset[pName]  = true
+    end
+
+    if RaidAssignments.TestMode then
+        for _, unit in ipairs(RaidAssignments.TestRoster) do
+            if unit.name then
+                cache[unit.name] = unit.class
+                rset[unit.name]  = true
+            end
+        end
+    elseif GetRaidRosterInfo(1) then
+        for i = 1, GetNumRaidMembers() do
+            local name  = UnitName("raid"..i)
+            local class = UnitClass("raid"..i)
+            if name then
+                cache[name] = class
+                rset[name]  = true
+            end
+        end
+    elseif GetNumPartyMembers() > 0 then
+        for i = 1, GetNumPartyMembers() do
+            local name  = UnitName("party"..i)
+            local class = UnitClass("party"..i)
+            if name then
+                cache[name] = class
+                rset[name]  = true
+            end
+        end
+    end
+
+    RaidAssignments._rosterCache = cache
+    RaidAssignments._rosterSet   = rset
+end
+
+-- Lookup helper: returns class string for a player name, or nil.
+local function GetCachedClass(name)
+    return RaidAssignments._rosterCache[name]
+end
+
+-- ─────────────────────────────────────────────────────────────────────────────
+
 -- events
 RaidAssignments:RegisterEvent("ADDON_LOADED")
 RaidAssignments:RegisterEvent("RAID_ROSTER_UPDATE")
@@ -477,6 +535,7 @@ function RaidAssignments:OnEvent()
         RaidAssignments:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "RAID_ROSTER_UPDATE" or event == "UNIT_PORTRAIT_UPDATE" then
+        RaidAssignments:RebuildRosterCache()
         -- Update all relevant frames safely
         pcall(function()
             RaidAssignments:UpdateTanks()
@@ -2257,153 +2316,40 @@ function RaidAssignments:ClassPos(class)
 end
 
 function RaidAssignments:GetClassColors(name, color)
-	if color == "rgb" then
-		if name == UnitName("player") then
-			if UnitClass("player") == "Warrior" then return 0.78, 0.61, 0.43,1
-			elseif UnitClass("player") == "Hunter" then return 0.67, 0.83, 0.45,1
-			elseif UnitClass("player") == "Mage" then return 0.41, 0.80, 0.94,1
-			elseif UnitClass("player") == "Rogue" then return 1.00, 0.96, 0.41,1
-			elseif UnitClass("player") == "Warlock" then return 0.58, 0.51, 0.79,1
-			elseif UnitClass("player") == "Druid" then return 1, 0.49, 0.04,1
-			elseif UnitClass("player") == "Shaman" then return 0.0, 0.44, 0.87,1
-			elseif UnitClass("player") == "Priest" then return 1.00, 1.00, 1.00,1
-			elseif UnitClass("player") == "Paladin" then return 0.96, 0.55, 0.73,1
-			end
-		end
-		if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
-			local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
-			local numMembers = RaidAssignments.TestMode and table.getn(RaidAssignments.TestRoster) or GetNumRaidMembers()
-			for i=1,numMembers do
-				local unitName, unitClass
-				if RaidAssignments.TestMode then
-					unitName = roster[i].name
-					unitClass = roster[i].class
-				else
-					unitName = UnitName("raid"..i)
-					unitClass = UnitClass("raid"..i)
-				end
-				if unitName == name then
-					if unitClass == "Warrior" then return 0.78, 0.61, 0.43,1
-					elseif unitClass == "Hunter" then return 0.67, 0.83, 0.45,1
-					elseif unitClass == "Mage" then return 0.41, 0.80, 0.94,1
-					elseif unitClass == "Rogue" then return 1.00, 0.96, 0.41,1
-					elseif unitClass == "Warlock" then return 0.58, 0.51, 0.79,1
-					elseif unitClass == "Druid" then return 1, 0.49, 0.04,1
-					elseif unitClass == "Shaman" then return 0.0, 0.44, 0.87,1
-					elseif unitClass == "Priest" then return 1.00, 1.00, 1.00,1
-					elseif unitClass == "Paladin" then return 0.96, 0.55, 0.73,1
-					end
-				end
-			end
-		elseif GetNumPartyMembers() > 0 then
-			for i=1,GetNumPartyMembers() do
-				if UnitName("party"..i) == name then
-					if UnitClass("party"..i) == "Warrior" then return 0.78, 0.61, 0.43,1
-					elseif UnitClass("party"..i) == "Hunter" then return 0.67, 0.83, 0.45,1
-					elseif UnitClass("party"..i) == "Mage" then return 0.41, 0.80, 0.94,1
-					elseif UnitClass("party"..i) == "Rogue" then return 1.00, 0.96, 0.41,1
-					elseif UnitClass("party"..i) == "Warlock" then return 0.58, 0.51, 0.79,1
-					elseif UnitClass("party"..i) == "Druid" then return 1, 0.49, 0.04,1
-					elseif UnitClass("party"..i) == "Shaman" then return 0.0, 0.44, 0.87,1
-					elseif UnitClass("party"..i) == "Priest" then return 1.00, 1.00, 1.00,1
-					elseif UnitClass("party"..i) == "Paladin" then return 0.96, 0.55, 0.73,1
-					end
-				end
-			end
-			if UnitName("player") == name then
-				if UnitClass("player") == "Warrior" then return 0.78, 0.61, 0.43,1
-				elseif UnitClass("player") == "Hunter" then return 0.67, 0.83, 0.45,1
-				elseif UnitClass("player") == "Mage" then return 0.41, 0.80, 0.94,1
-				elseif UnitClass("player") == "Rogue" then return 1.00, 0.96, 0.41,1
-				elseif UnitClass("player") == "Warlock" then return 0.58, 0.51, 0.79,1
-				elseif UnitClass("player") == "Druid" then return 1, 0.49, 0.04,1
-				elseif UnitClass("player") == "Shaman" then return 0.0, 0.44, 0.87,1
-				elseif UnitClass("player") == "Priest" then return 1.00, 1.00, 1.00,1
-				elseif UnitClass("player") == "Paladin" then return 0.96, 0.55, 0.73,1
-				end
-			end
-		else
-			if UnitName("player") == name then
-				if UnitClass("player") == "Warrior" then return 0.78, 0.61, 0.43,1
-				elseif UnitClass("player") == "Hunter" then return 0.67, 0.83, 0.45,1
-				elseif UnitClass("player") == "Mage" then return 0.41, 0.80, 0.94,1
-				elseif UnitClass("player") == "Rogue" then return 1.00, 0.96, 0.41,1
-				elseif UnitClass("player") == "Warlock" then return 0.58, 0.51, 0.79,1
-				elseif UnitClass("player") == "Druid" then return 1, 0.49, 0.04,1
-				elseif UnitClass("player") == "Shaman" then return 0.0, 0.44, 0.87,1
-				elseif UnitClass("player") == "Priest" then return 1.00, 1.00, 1.00,1
-				elseif UnitClass("player") == "Paladin" then return 0.96, 0.55, 0.73,1
-				end
-			end
-		end
-	elseif color == "cff" then
-		if name == UnitName("player") then
-			if UnitClass("player") == "Warrior" then return "|cffC79C6E"..name.."|r"
-			elseif UnitClass("player") == "Hunter" then return "|cffABD473"..name.."|r"
-			elseif UnitClass("player") == "Mage" then return "|cff69CCF0"..name.."|r"
-			elseif UnitClass("player") == "Rogue" then return "|cffFFF569"..name.."|r"
-			elseif UnitClass("player") == "Warlock" then return "|cff9482C9"..name.."|r"
-			elseif UnitClass("player") == "Druid" then return "|cffFF7D0A"..name.."|r"
-			elseif UnitClass("player") == "Shaman" then return "|cff0070DE"..name.."|r"
-			elseif UnitClass("player") == "Priest" then return "|cffFFFFFF"..name.."|r"
-			elseif UnitClass("player") == "Paladin" then return "|cffF58CBA"..name.."|r"
-			end
-		end
-		if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
-			local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
-			local numMembers = RaidAssignments.TestMode and table.getn(RaidAssignments.TestRoster) or GetNumRaidMembers()
-			for i=1,numMembers do
-				local unitName, unitClass
-				if RaidAssignments.TestMode then
-					unitName = roster[i].name
-					unitClass = roster[i].class
-				else
-					unitName = UnitName("raid"..i)
-					unitClass = UnitClass("raid"..i)
-				end
-				if unitName == name then
-					if unitClass == "Warrior" then return "|cffC79C6E"..name.."|r"
-					elseif unitClass == "Hunter" then return "|cffABD473"..name.."|r"
-					elseif unitClass == "Mage" then return "|cff69CCF0"..name.."|r"
-					elseif unitClass == "Rogue" then return "|cffFFF569"..name.."|r"
-					elseif unitClass == "Warlock" then return "|cff9482C9"..name.."|r"
-					elseif unitClass == "Druid" then return "|cffFF7D0A"..name.."|r"
-					elseif unitClass == "Shaman" then return "|cff0070DE"..name.."|r"
-					elseif unitClass == "Priest" then return "|cffFFFFFF"..name.."|r"
-					elseif unitClass == "Paladin" then return "|cffF58CBA"..name.."|r"
-					end
-				end
-			end
-		else
-			for i=1,GetNumPartyMembers() do
-				if UnitName("party"..i) == name then
-					if UnitClass("party"..i) == "Warrior" then return "|cffC79C6E"..name.."|r"
-					elseif UnitClass("party"..i) == "Hunter" then return "|cffABD473"..name.."|r"
-					elseif UnitClass("party"..i) == "Mage" then return "|cff69CCF0"..name.."|r"
-					elseif UnitClass("party"..i) == "Rogue" then return "|cffFFF569"..name.."|r"
-					elseif UnitClass("party"..i) == "Warlock" then return "|cff9482C9"..name.."|r"
-					elseif UnitClass("party"..i) == "Druid" then return "|cffFF7D0A"..name.."|r"
-					elseif UnitClass("party"..i) == "Shaman" then return "|cff0070DE"..name.."|r"
-					elseif UnitClass("party"..i) == "Priest" then return "|cffFFFFFF"..name.."|r"
-					elseif UnitClass("party"..i) == "Paladin" then return "|cffF58CBA"..name.."|r"
-					end
-				end
-			end
-			if UnitName("player") == name then
-				if UnitClass("player") == "Warrior" then return "|cffC79C6E"..name.."|r"
-				elseif UnitClass("player") == "Hunter" then return "|cffABD473"..name.."|r"
-				elseif UnitClass("player") == "Mage" then return "|cff69CCF0"..name.."|r"
-				elseif UnitClass("player") == "Rogue" then return "|cffFFF569"..name.."|r"
-				elseif UnitClass("player") == "Warlock" then return "|cff9482C9"..name.."|r"
-				elseif UnitClass("player") == "Druid" then return "|cffFF7D0A"..name.."|r"
-				elseif UnitClass("player") == "Shaman" then return "|cff0070DE"..name.."|r"
-				elseif UnitClass("player") == "Priest" then return "|cffFFFFFF"..name.."|r"
-				elseif UnitClass("player") == "Paladin" then return "|cffF58CBA"..name.."|r"
-				end
-			end
-			-- Fallback: player not found or unknown class, return plain name
-			return name or ""
-		end
+    if color == "rgb" then
+        local class = GetCachedClass(name)
+        if not class then
+            -- Cache miss: fall back to direct API for the local player
+            if name == UnitName("player") then class = UnitClass("player") end
+        end
+        if class == "Warrior" then return 0.78, 0.61, 0.43, 1
+        elseif class == "Hunter"  then return 0.67, 0.83, 0.45, 1
+        elseif class == "Mage"    then return 0.41, 0.80, 0.94, 1
+        elseif class == "Rogue"   then return 1.00, 0.96, 0.41, 1
+        elseif class == "Warlock" then return 0.58, 0.51, 0.79, 1
+        elseif class == "Druid"   then return 1.00, 0.49, 0.04, 1
+        elseif class == "Shaman"  then return 0.00, 0.44, 0.87, 1
+        elseif class == "Priest"  then return 1.00, 1.00, 1.00, 1
+        elseif class == "Paladin" then return 0.96, 0.55, 0.73, 1
+        end
+        return 0.8, 0.8, 0.8, 1  -- unknown class fallback
+
+    elseif color == "cff" then
+        local class = GetCachedClass(name)
+        if not class then
+            if name == UnitName("player") then class = UnitClass("player") end
+        end
+        if class == "Warrior" then return "|cffC79C6E"..name.."|r"
+        elseif class == "Hunter"  then return "|cffABD473"..name.."|r"
+        elseif class == "Mage"    then return "|cff69CCF0"..name.."|r"
+        elseif class == "Rogue"   then return "|cffFFF569"..name.."|r"
+        elseif class == "Warlock" then return "|cff9482C9"..name.."|r"
+        elseif class == "Druid"   then return "|cffFF7D0A"..name.."|r"
+        elseif class == "Shaman"  then return "|cff0070DE"..name.."|r"
+        elseif class == "Priest"  then return "|cffFFFFFF"..name.."|r"
+        elseif class == "Paladin" then return "|cffF58CBA"..name.."|r"
+        end
+        return name or ""  -- unknown class fallback
 	elseif color == "class" then
 		if (name == "Warrior") then
 			return 0.78, 0.61, 0.43
@@ -2451,35 +2397,7 @@ function RaidAssignments:GetClassColors(name, color)
 end
 
 function RaidAssignments:IsInRaid(name)
-	if GetRaidRosterInfo(1) or RaidAssignments.TestMode then
-		local roster = RaidAssignments.TestMode and RaidAssignments.TestRoster or {}
-		local numMembers = RaidAssignments.TestMode and table.getn(RaidAssignments.TestRoster) or GetNumRaidMembers()
-		for i=1,numMembers do
-			local unitName
-			if RaidAssignments.TestMode then
-				unitName = roster[i].name
-			else
-				unitName = UnitName("raid"..i)
-			end
-			if unitName == name then
-				return true
-			end
-		end
-	elseif GetNumPartyMembers() > 0 then
-		for i=1,GetNumPartyMembers() do
-			if UnitName("party"..i) == name then
-				return true
-			end
-		end
-		if UnitName("player") == name then
-			return true
-		end
-	else
-		if UnitName("player") == name then
-			return true
-		end
-	end
-	return false
+    return RaidAssignments._rosterSet[name] == true
 end
 
 -- Restrict Curse Marks (9–12) to Warlocks only
@@ -2866,12 +2784,23 @@ function RaidAssignments:OpenToolTip(frameName)
         -- Store the original mark frame for reference
         RaidAssignments.ToolTip.originalMark = _G[frameName]
         RaidAssignments.ToolTip.isVisible = true
-        RaidAssignments.ToolTip:SetScript("OnLeave", function()
-            -- Check if mouse is actually leaving both the tooltip AND the original mark
-            local mouseFocus = GetMouseFocus()
-            local overTooltip = (mouseFocus == this) or (mouseFocus and mouseFocus:GetParent() == this)
-            local overMark = (mouseFocus == this.originalMark) or (mouseFocus and mouseFocus:GetParent() == this.originalMark)
 
+        -- Walk the full parent chain to check if 'child' is under 'ancestor'.
+        -- Needed because player frames have an hpbar child whose children (textures,
+        -- fontstrings) would fail a single-level GetParent() check.
+        local function IsUnder(child, ancestor)
+            local f = child
+            while f do
+                if f == ancestor then return true end
+                f = f:GetParent()
+            end
+            return false
+        end
+
+        RaidAssignments.ToolTip:SetScript("OnLeave", function()
+            local mouseFocus = GetMouseFocus()
+            local overTooltip = mouseFocus and IsUnder(mouseFocus, this)
+            local overMark    = mouseFocus and IsUnder(mouseFocus, this.originalMark)
             if not overTooltip and not overMark then
                 this.isVisible = false
                 this:Hide()
@@ -2880,11 +2809,9 @@ function RaidAssignments:OpenToolTip(frameName)
 
         if RaidAssignments.ToolTip.originalMark then
             RaidAssignments.ToolTip.originalMark:SetScript("OnLeave", function()
-                -- Check if mouse is actually leaving both the mark AND the tooltip
                 local mouseFocus = GetMouseFocus()
-                local overMark = (mouseFocus == this) or (mouseFocus and mouseFocus:GetParent() == this)
-                local overTooltip = (mouseFocus == RaidAssignments.ToolTip) or (mouseFocus and mouseFocus:GetParent() == RaidAssignments.ToolTip)
-
+                local overMark    = mouseFocus and IsUnder(mouseFocus, this)
+                local overTooltip = mouseFocus and IsUnder(mouseFocus, RaidAssignments.ToolTip)
                 if not overMark and not overTooltip then
                     RaidAssignments.ToolTip.isVisible = false
                     RaidAssignments.ToolTip:Hide()
@@ -2948,7 +2875,7 @@ function RaidAssignments:OpenHealToolTip(frameName)
                     end
                     if f then break end
                 end
-                if not f and RaidAssignments.RoleFilter.Healer[class] then
+                if not f and RaidAssignments.RoleFilter.Healer[class] and RaidAssignments_Settings[class] == 1 then
                     table.insert(eligiblePlayers, name)
                 end
             end
@@ -2998,27 +2925,31 @@ function RaidAssignments:OpenHealToolTip(frameName)
         RaidAssignments.HealToolTip.originalMark = _G[frameName]
         RaidAssignments.HealToolTip.isVisible = true
 
-        -- Improved mouse handling - only hide when mouse leaves BOTH tooltip AND mark
-        RaidAssignments.HealToolTip:SetScript("OnLeave", function()
-            -- Check if mouse is actually leaving both the tooltip AND the original mark
-            local mouseFocus = GetMouseFocus()
-            local overTooltip = (mouseFocus == this) or (mouseFocus and mouseFocus:GetParent() == this)
-            local overMark = (mouseFocus == this.originalMark) or (mouseFocus and mouseFocus:GetParent() == this.originalMark)
+        -- Walk the full parent chain to check if 'child' is under 'ancestor'.
+        local function IsUnder(child, ancestor)
+            local f = child
+            while f do
+                if f == ancestor then return true end
+                f = f:GetParent()
+            end
+            return false
+        end
 
+        RaidAssignments.HealToolTip:SetScript("OnLeave", function()
+            local mouseFocus = GetMouseFocus()
+            local overTooltip = mouseFocus and IsUnder(mouseFocus, this)
+            local overMark    = mouseFocus and IsUnder(mouseFocus, this.originalMark)
             if not overTooltip and not overMark then
                 this.isVisible = false
                 this:Hide()
             end
         end)
 
-        -- Improved OnLeave for the original mark frame
         if RaidAssignments.HealToolTip.originalMark then
             RaidAssignments.HealToolTip.originalMark:SetScript("OnLeave", function()
-                -- Check if mouse is actually leaving both the mark AND the tooltip
                 local mouseFocus = GetMouseFocus()
-                local overMark = (mouseFocus == this) or (mouseFocus and mouseFocus:GetParent() == this)
-                local overTooltip = (mouseFocus == RaidAssignments.HealToolTip) or (mouseFocus and mouseFocus:GetParent() == RaidAssignments.HealToolTip)
-
+                local overMark    = mouseFocus and IsUnder(mouseFocus, this)
+                local overTooltip = mouseFocus and IsUnder(mouseFocus, RaidAssignments.HealToolTip)
                 if not overMark and not overTooltip then
                     RaidAssignments.HealToolTip.isVisible = false
                     RaidAssignments.HealToolTip:Hide()
@@ -3153,7 +3084,6 @@ function RaidAssignments:AddHeal(name, mark)
     if slot then
         RaidAssignments.HealFrames[mark][name] = RaidAssignments.HealFrames[mark][name] or RaidAssignments:AddHealFrame(name, mark)
         local frame = RaidAssignments.HealFrames[mark][name]
-        local unit = RaidAssignments:GetRaidID(name)
         frame:SetPoint("RIGHT", 5 + (85 * slot), 0)
         frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
         frame:Show()
@@ -3207,7 +3137,6 @@ function RaidAssignments:AddGeneral(name, mark)
 end
 
 function RaidAssignments:AddToolTipFrame(name, tooltip)
-    local unit = RaidAssignments:GetRaidID(name)
     local frame = CreateFrame("Button", name, tooltip)
     local backdrop = {
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -3256,14 +3185,12 @@ function RaidAssignments:AddToolTipFrame(name, tooltip)
 			end
 		end
 	end)
-    frame.unit = unit
     frame:SetScript("OnEnter", function() end)
     frame:SetScript("OnLeave", function() end)
     return frame
 end
 
 function RaidAssignments:AddTankFrame(name, mark)
-    local unit = RaidAssignments:GetRaidID(name)
     local frame = CreateFrame("Button", mark..name, RaidAssignments.bg)
     local backdrop = {
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -3276,6 +3203,8 @@ function RaidAssignments:AddTankFrame(name, mark)
     frame:SetParent("T"..mark)
     frame:SetWidth(80)
     frame:SetHeight(25)
+    frame:SetBackdrop(backdrop)
+    frame:SetBackdropColor(0, 0, 0, 0)
 
     -- hpbar without portrait gap
     frame.hpbar = CreateFrame("Button", nil, frame)
@@ -3313,14 +3242,12 @@ function RaidAssignments:AddTankFrame(name, mark)
 			end
 		end
 	end)
-    frame.unit = unit
     frame:SetScript("OnEnter", function() end)
     frame:SetScript("OnLeave", function() end)
     return frame
 end
 
 function RaidAssignments:AddHealFrame(name, mark)
-    local unit = RaidAssignments:GetRaidID(name)
     local frame = CreateFrame("Button", "H"..mark..name, RaidAssignments.bg)
     local backdrop = {
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -3333,6 +3260,8 @@ function RaidAssignments:AddHealFrame(name, mark)
     frame:SetParent("H"..mark)
     frame:SetWidth(80)
     frame:SetHeight(25)
+    frame:SetBackdrop(backdrop)
+    frame:SetBackdropColor(0, 0, 0, 0)
 
     frame.hpbar = CreateFrame("Button", nil, frame)
     frame.hpbar:SetWidth(frame:GetWidth() - 4)
@@ -3369,14 +3298,12 @@ function RaidAssignments:AddHealFrame(name, mark)
 		end
 	end)
 
-    frame.unit = unit
     frame:SetScript("OnEnter", function() end)
     frame:SetScript("OnLeave", function() end)
     return frame
 end
 
 function RaidAssignments:AddGeneralFrame(name, mark)
-    local unit = RaidAssignments:GetRaidID(name)
     local frame = CreateFrame("Button", mark..name, RaidAssignments.generalBg)
     local backdrop = {
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -3389,6 +3316,8 @@ function RaidAssignments:AddGeneralFrame(name, mark)
     frame:SetParent("G"..mark)
     frame:SetWidth(80)
     frame:SetHeight(25)
+    frame:SetBackdrop(backdrop)
+    frame:SetBackdropColor(0, 0, 0, 0)
 
     -- hpbar without portrait gap
     frame.hpbar = CreateFrame("Button", nil, frame)
@@ -3429,7 +3358,6 @@ function RaidAssignments:AddGeneralFrame(name, mark)
         end
     end)
 
-    frame.unit = unit
     frame:SetScript("OnEnter", function() end)
     frame:SetScript("OnLeave", function() end)
     return frame
@@ -3443,26 +3371,26 @@ function RaidAssignments:PostAssignments()
     if RaidAssignments_Settings["usecolors"] then
         -- Tanks
         for i = 1, 8 do
-            if RaidAssignments.Marks[i] ~= nil and table.getn(RaidAssignments.Marks[i]) ~= 0 then
-                n = true
-            end
+            for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
             SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments:GetClassColors(RaidAssignments.RealMarks[i], "mark")
-                if table.getn(RaidAssignments.Marks[i]) ~= 0 then
+                local hasAny = false
+                for _ in pairs(RaidAssignments.Marks[i]) do hasAny = true; break end
+                if hasAny then
+                    local first = true
                     for k, v in pairs(RaidAssignments.Marks[i]) do
-                        if k == 1 then
+                        if first then
                             text = text .. ": " .. RaidAssignments:GetClassColors(v, "cff")
+                            first = false
                         else
                             text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
                         end
-                        if k == table.getn(RaidAssignments.Marks[i]) then
-                            text = text .. "."
-                        end
                     end
+                    text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
@@ -3472,24 +3400,21 @@ function RaidAssignments:PostAssignments()
         -- Curses
         n = false
         for i = 9, 12 do
-            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
-                n = true
-                break
-            end
+            for _ in pairs(RaidAssignments.Marks[i] or {}) do n = true; break end
+            if n then break end
         end
         if n then
             SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
             for i = 9, 12 do
-                if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                local hasAny = false
+                for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
+                if hasAny then
                     local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
                     local text = curseName .. ": "
-                    
+                    local first = true
                     for k, v in pairs(RaidAssignments.Marks[i]) do
-                        if k == 1 then
-                            text = text .. RaidAssignments:GetClassColors(v, "cff")
-                        else
-                            text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
-                        end
+                        if first then text = text .. RaidAssignments:GetClassColors(v, "cff"); first = false
+                        else text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff") end
                     end
                     text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
@@ -3548,26 +3473,26 @@ function RaidAssignments:PostAssignments()
     else
         -- Tanks
         for i = 1, 8 do
-            if RaidAssignments.Marks[i] ~= nil and table.getn(RaidAssignments.Marks[i]) ~= 0 then
-                n = true
-            end
+            for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
             SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments.RealMarks[i]
-                if table.getn(RaidAssignments.Marks[i]) ~= 0 then
+                local hasAny = false
+                for _ in pairs(RaidAssignments.Marks[i]) do hasAny = true; break end
+                if hasAny then
+                    local first = true
                     for k, v in pairs(RaidAssignments.Marks[i]) do
-                        if k == 1 then
+                        if first then
                             text = text .. ": " .. v
+                            first = false
                         else
                             text = text .. ", " .. v
                         end
-                        if k == table.getn(RaidAssignments.Marks[i]) then
-                            text = text .. "."
-                        end
                     end
+                    text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
@@ -3577,24 +3502,21 @@ function RaidAssignments:PostAssignments()
         -- Curses
         n = false
         for i = 9, 12 do
-            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
-                n = true
-                break
-            end
+            for _ in pairs(RaidAssignments.Marks[i] or {}) do n = true; break end
+            if n then break end
         end
         if n then
             SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
             for i = 9, 12 do
-                if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+                local hasAny = false
+                for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
+                if hasAny then
                     local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
                     local text = curseName .. ": "
-                    
+                    local first = true
                     for k, v in pairs(RaidAssignments.Marks[i]) do
-                        if k == 1 then
-                            text = text .. v
-                        else
-                            text = text .. ", " .. v
-                        end
+                        if first then text = text .. v; first = false
+                        else text = text .. ", " .. v end
                     end
                     text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
@@ -3743,26 +3665,26 @@ function RaidAssignments:PostRaidAssignments()
     if RaidAssignments_Settings["usecolors"] then
         -- Tanks
         for i = 1, 8 do
-            if RaidAssignments.Marks[i] ~= nil and table.getn(RaidAssignments.Marks[i]) ~= 0 then
-                n = true
-            end
+            for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
             SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments:GetClassColors(RaidAssignments.RealMarks[i], "mark")
-                if table.getn(RaidAssignments.Marks[i]) ~= 0 then
+                local hasAny = false
+                for _ in pairs(RaidAssignments.Marks[i]) do hasAny = true; break end
+                if hasAny then
+                    local first = true
                     for k, v in pairs(RaidAssignments.Marks[i]) do
-                        if k == 1 then
+                        if first then
                             text = text .. ": " .. RaidAssignments:GetClassColors(v, "cff")
+                            first = false
                         else
                             text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
                         end
-                        if k == table.getn(RaidAssignments.Marks[i]) then
-                            text = text .. "."
-                        end
                     end
+                    text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
@@ -3771,26 +3693,26 @@ function RaidAssignments:PostRaidAssignments()
     else
         -- Tanks (no colors)
         for i = 1, 8 do
-            if RaidAssignments.Marks[i] ~= nil and table.getn(RaidAssignments.Marks[i]) ~= 0 then
-                n = true
-            end
+            for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
             SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments.RealMarks[i]
-                if table.getn(RaidAssignments.Marks[i]) ~= 0 then
+                local hasAny = false
+                for _ in pairs(RaidAssignments.Marks[i]) do hasAny = true; break end
+                if hasAny then
+                    local first = true
                     for k, v in pairs(RaidAssignments.Marks[i]) do
-                        if k == 1 then
+                        if first then
                             text = text .. ": " .. v
+                            first = false
                         else
                             text = text .. ", " .. v
                         end
-                        if k == table.getn(RaidAssignments.Marks[i]) then
-                            text = text .. "."
-                        end
                     end
+                    text = text .. "."
                     SendChatMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
@@ -4087,18 +4009,6 @@ function RaidAssignments:PostGeneralAssignments()
     end
 end
 
-function RaidAssignments:SendCustomMarkLabels()
-    if IsRaidOfficer() then
-        local sendstring = ""
-        for i = 9, 10 do
-            local label = RaidAssignments.GeneralRealMarks[i] or ""
-            -- Use simple format without pipe characters
-            sendstring = sendstring .. i .. "_" .. label .. ","
-        end
-        SendAddonMessage("RACLabels", sendstring, "RAID")
-    end
-end
-
 function RaidAssignments:PostCurses()
     if not IsRaidOfficer() then
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 3.0|r: You must be a raid officer to post curse assignments")
@@ -4111,10 +4021,8 @@ function RaidAssignments:PostCurses()
 
     -- Check if there are any curse assignments
     for i = 9, 12 do
-        if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
-            hasCurses = true
-            break
-        end
+        for _ in pairs(RaidAssignments.Marks[i] or {}) do hasCurses = true; break end
+        if hasCurses then break end
     end
 
     if not hasCurses then
@@ -4125,16 +4033,15 @@ function RaidAssignments:PostCurses()
     if RaidAssignments_Settings["usecolors"] then
         SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
         for i = 9, 12 do
-            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+            local hasAny = false
+            for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
+            if hasAny then
                 local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
                 local text = curseName .. ": "
-
+                local first = true
                 for k, v in pairs(RaidAssignments.Marks[i]) do
-                    if k == 1 then
-                        text = text .. RaidAssignments:GetClassColors(v, "cff")
-                    else
-                        text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff")
-                    end
+                    if first then text = text .. RaidAssignments:GetClassColors(v, "cff"); first = false
+                    else text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff") end
                 end
                 text = text .. "."
                 SendChatMessage(text, chan, nil, chanNum)
@@ -4143,16 +4050,15 @@ function RaidAssignments:PostCurses()
     else
         SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
         for i = 9, 12 do
-            if RaidAssignments.Marks[i] and table.getn(RaidAssignments.Marks[i]) > 0 then
+            local hasAny = false
+            for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
+            if hasAny then
                 local curseName = RaidAssignments.WarlockMarks[i] and RaidAssignments.WarlockMarks[i].name or "Unknown Curse"
                 local text = curseName .. ": "
-
+                local first = true
                 for k, v in pairs(RaidAssignments.Marks[i]) do
-                    if k == 1 then
-                        text = text .. v
-                    else
-                        text = text .. ", " .. v
-                    end
+                    if first then text = text .. v; first = false
+                    else text = text .. ", " .. v end
                 end
                 text = text .. "."
                 SendChatMessage(text, chan, nil, chanNum)
@@ -5068,50 +4974,46 @@ function RaidAssignments:OpenCustomToolTip(frameName, customIndex)
         tooltip.originalMark = _G[frameName]
         tooltip.isVisible = true
 
-        -- Improved mouse handling
-        tooltip:SetScript("OnLeave", function()
-            -- Check if mouse is actually leaving both the tooltip AND the original mark
-            local mouseFocus = GetMouseFocus()
-            local overTooltip = (mouseFocus == this) or (mouseFocus and mouseFocus:GetParent() == this)
-            local overMark = (mouseFocus == this.originalMark) or (mouseFocus and mouseFocus:GetParent() == this.originalMark)
+        -- Walk the full parent chain to check if 'child' is under 'ancestor'.
+        local function IsUnder(child, ancestor)
+            local f = child
+            while f do
+                if f == ancestor then return true end
+                f = f:GetParent()
+            end
+            return false
+        end
 
-            if not overTooltip and not overMark then
-                this.isVisible = false
-                this:Hide()
-                -- Clean up frames when hiding
-                if RaidAssignments.CustomFrames[customIndex] and RaidAssignments.CustomFrames[customIndex].tooltipFrames then
-                    for name, frame in pairs(RaidAssignments.CustomFrames[customIndex].tooltipFrames) do
-                        if frame and frame.Hide then
-                            frame:Hide()
-                            frame:SetParent(nil)
-                        end
+        local function HideCustomTooltip()
+            RaidAssignments.CustomToolTip.isVisible = false
+            RaidAssignments.CustomToolTip:Hide()
+            if RaidAssignments.CustomFrames[customIndex] and RaidAssignments.CustomFrames[customIndex].tooltipFrames then
+                for _, frame in pairs(RaidAssignments.CustomFrames[customIndex].tooltipFrames) do
+                    if frame and frame.Hide then
+                        frame:Hide()
+                        frame:SetParent(nil)
                     end
-                    RaidAssignments.CustomFrames[customIndex].tooltipFrames = {}
                 end
+                RaidAssignments.CustomFrames[customIndex].tooltipFrames = {}
+            end
+        end
+
+        tooltip:SetScript("OnLeave", function()
+            local mouseFocus = GetMouseFocus()
+            local overTooltip = mouseFocus and IsUnder(mouseFocus, this)
+            local overMark    = mouseFocus and IsUnder(mouseFocus, this.originalMark)
+            if not overTooltip and not overMark then
+                HideCustomTooltip()
             end
         end)
 
-        -- Improved OnLeave for the original mark frame
         if tooltip.originalMark then
             tooltip.originalMark:SetScript("OnLeave", function()
-                -- Check if mouse is actually leaving both the mark AND the tooltip
                 local mouseFocus = GetMouseFocus()
-                local overMark = (mouseFocus == this) or (mouseFocus and mouseFocus:GetParent() == this)
-                local overTooltip = (mouseFocus == RaidAssignments.CustomToolTip) or (mouseFocus and mouseFocus:GetParent() == RaidAssignments.CustomToolTip)
-
+                local overMark    = mouseFocus and IsUnder(mouseFocus, this)
+                local overTooltip = mouseFocus and IsUnder(mouseFocus, RaidAssignments.CustomToolTip)
                 if not overMark and not overTooltip then
-                    RaidAssignments.CustomToolTip.isVisible = false
-                    RaidAssignments.CustomToolTip:Hide()
-                    -- Clean up frames when hiding
-                    if RaidAssignments.CustomFrames[customIndex] and RaidAssignments.CustomFrames[customIndex].tooltipFrames then
-                        for name, frame in pairs(RaidAssignments.CustomFrames[customIndex].tooltipFrames) do
-                            if frame and frame.Hide then
-                                frame:Hide()
-                                frame:SetParent(nil)
-                            end
-                        end
-                        RaidAssignments.CustomFrames[customIndex].tooltipFrames = {}
-                    end
+                    HideCustomTooltip()
                 end
             end)
         end
@@ -5151,7 +5053,6 @@ function RaidAssignments:AddCustomToolTipFrame(name, tooltip, customIndex)
         RaidAssignments.CustomFrames[customIndex].tooltipFrames[name] = nil
     end
 
-    local unit = RaidAssignments:GetRaidID(name)
     local frame = CreateFrame("Button", nil, tooltip)
 
     -- COPY THE EXACT STYLING FROM AddToolTipFrame
@@ -5236,7 +5137,6 @@ function RaidAssignments:AddCustomToolTipFrame(name, tooltip, customIndex)
         end
     end)
 
-    frame.unit = unit
     frame:SetScript("OnEnter", function() end)
     frame:SetScript("OnLeave", function() end)
     return frame
@@ -5908,10 +5808,14 @@ function RaidAssignments:CreateYourMarkFrame()
     end)
     frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- ── OnUpdate: live name + HP ──────────────────────────────────────
+    -- ── OnUpdate: live name + HP (throttled to ~10Hz) ────────────────────
+    frame._updateT = 0
     frame:SetScript("OnUpdate", function()
         local f = frame
         if not f or not f:IsShown() then return end
+        f._updateT = f._updateT + arg1
+        if f._updateT < 0.1 then return end
+        f._updateT = 0
 
         local mi = f.assignedMarkIndex
         if not mi then return end

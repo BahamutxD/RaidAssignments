@@ -4825,9 +4825,30 @@ SlashCmdList["RAIDASSIGNMENTS"] = function(msg)
         else
             DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RaidAssignments:|r Usage: /rc custom [1-8]")
         end
+    elseif cmd == "resetpos" then
+        -- Reset YourMarkFrame
+        RaidAssignments_Settings["YourMarkFrameX"] = nil
+        RaidAssignments_Settings["YourMarkFrameY"] = nil
+        RaidAssignments_Settings["YourMarkFrameScale"] = nil
+        if RaidAssignments.YourMarkFrame then
+            RaidAssignments.YourMarkFrame:SetScale(1.0)
+            RaidAssignments.YourMarkFrame:ClearAllPoints()
+            RaidAssignments.YourMarkFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+        -- Reset YourCurseFrame
+        RaidAssignments_Settings["YourCurseFrameX"] = nil
+        RaidAssignments_Settings["YourCurseFrameY"] = nil
+        RaidAssignments_Settings["YourCurseFrameScale"] = nil
+        if RaidAssignments.YourCurseFrame then
+            RaidAssignments.YourCurseFrame:SetScale(1.0)
+            RaidAssignments.YourCurseFrame:ClearAllPoints()
+            RaidAssignments.YourCurseFrame:SetPoint("CENTER", UIParent, "CENTER", 0, -50)
+        end
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RaidAssignments:|r Frames reset to center of screen.")
     else
         DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RaidAssignments:|r Commands:")
-        DEFAULT_CHAT_FRAME:AddMessage("/rc custom [1-8] - Open a Custom Assignments window")
+        DEFAULT_CHAT_FRAME:AddMessage("  /rc custom [1-8] - Open a Custom Assignments window")
+        DEFAULT_CHAT_FRAME:AddMessage("  /rc resetpos     - Reset frames to center of screen")
     end
 end
 
@@ -5573,59 +5594,66 @@ RaidAssignments.MarkColors = {
 function RaidAssignments:CreateYourMarkFrame()
     if RaidAssignments.YourMarkFrame then return end
 
-    local ICON_SIZE = 32
-    local INFO_W    = 120   -- narrower to reduce HP bar length
-    local BAR_H     = 8
+    local ICON_SIZE = 28
+    local INFO_W    = 160   -- adjusted for 25% wider frame
+    local BAR_H     = 12
     local PAD       = 8
     local FRAME_W   = PAD + ICON_SIZE + PAD + INFO_W + PAD
     local FRAME_H   = PAD + ICON_SIZE + PAD
 
-    local frame = CreateFrame("Button", "RaidAssignmentsYourMarkFrame", UIParent)
+    -- Invisible 1x1 anchor: the only frame with SetMovable(true).
+    -- Drag events fire on the visible frame, which calls anchor:StartMoving().
+    -- The visible frame follows because it is SetPoint("CENTER", anchor).
+    -- OnDragStop reads anchor:GetPoint() directly — no GetLeft/scale math.
+    local anchor = CreateFrame("Frame", "RaidAssignmentsYourMarkAnchor", UIParent)
+    anchor:SetWidth(1)
+    anchor:SetHeight(1)
+    anchor:SetMovable(true)
+    anchor:SetClampedToScreen(true)
+
+    local savedPoint = RaidAssignments_Settings["YourMarkFramePoint"] or "CENTER"
+    local savedRP    = RaidAssignments_Settings["YourMarkFrameRP"]    or "CENTER"
+    local savedX     = RaidAssignments_Settings["YourMarkFrameX"]     or 0
+    local savedY     = RaidAssignments_Settings["YourMarkFrameY"]     or 0
+    if savedPoint == "TOPLEFT" then  -- discard old pixel-based saves
+        savedPoint, savedRP, savedX, savedY = "CENTER", "CENTER", 0, 0
+    end
+    anchor:SetPoint(savedPoint, UIParent, savedRP, savedX, savedY)
+
+    local frame = CreateFrame("Frame", "RaidAssignmentsYourMarkFrame", UIParent)
     frame:SetWidth(FRAME_W)
     frame:SetHeight(FRAME_H)
-    frame:SetMovable(true)
+    -- NOTE: no SetMovable on frame; only anchor is movable
     frame:EnableMouse(true)
+    frame:EnableMouseWheel(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetFrameStrata("HIGH")
+    frame:SetPoint("CENTER", anchor, "CENTER", 0, 0)
 
-    -- Restore saved position, or fall back to default
-    local savedX     = RaidAssignments_Settings["YourMarkFrameX"]
-    local savedY     = RaidAssignments_Settings["YourMarkFrameY"]
-    local savedScale = RaidAssignments_Settings["YourMarkFrameScale"]
-    if savedX and savedY then
-        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", savedX, savedY)
-    else
-        frame:SetPoint("CENTER", UIParent, "CENTER", 400, 0)
-    end
-    if savedScale then
-        frame:SetScale(savedScale)
-    end
+    local savedScale = RaidAssignments_Settings["YourMarkFrameScale"] or 1.0
+    frame:SetScale(savedScale)
 
-    frame:SetScript("OnDragStart", function() this:StartMoving() end)
-    frame:SetScript("OnDragStop", function()
-        this:StopMovingOrSizing()
-        -- Save position as TOPLEFT offset from UIParent BOTTOMLEFT (stable across resolutions)
-        local x, y = this:GetLeft(), this:GetTop()
-        -- GetTop is from screen bottom; convert to offset from UIParent bottom
-        RaidAssignments_Settings["YourMarkFrameX"] = x
-        RaidAssignments_Settings["YourMarkFrameY"] = y - UIParent:GetHeight()
-        -- Re-anchor so it doesn't drift if resolution changes
-        this:ClearAllPoints()
-        this:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
-            RaidAssignments_Settings["YourMarkFrameX"],
-            RaidAssignments_Settings["YourMarkFrameY"])
+    frame:SetScript("OnDragStart", function()
+        frame._wasDragging = true
+        anchor:StartMoving()
     end)
-    frame:EnableMouseWheel(true)
+    frame:SetScript("OnDragStop", function()
+        anchor:StopMovingOrSizing()
+        local p, _, rp, x, y = anchor:GetPoint()
+        RaidAssignments_Settings["YourMarkFramePoint"] = p
+        RaidAssignments_Settings["YourMarkFrameRP"]    = rp
+        RaidAssignments_Settings["YourMarkFrameX"]     = x
+        RaidAssignments_Settings["YourMarkFrameY"]     = y
+    end)
     frame:SetScript("OnMouseWheel", function()
-        local f = frame
-        local scale = f:GetScale()
+        local s = frame:GetScale()
         if arg1 > 0 then
-            scale = math.min(scale + 0.05, 3.0)
+            s = math.min(s + 0.05, 3.0)
         else
-            scale = math.max(scale - 0.05, 0.3)
+            s = math.max(s - 0.05, 0.3)
         end
-        f:SetScale(scale)
-        RaidAssignments_Settings["YourMarkFrameScale"] = scale
+        frame:SetScale(s)
+        RaidAssignments_Settings["YourMarkFrameScale"] = s
     end)
 
     -- Dark solid background (no WoW backdrop edge so we control the border ourselves)
@@ -5666,6 +5694,10 @@ function RaidAssignments:CreateYourMarkFrame()
     bR:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0,  0)
 
     frame.borderLines = { bT, bB, bL, bR }
+    -- Border is always black
+    for _, line in ipairs(frame.borderLines) do
+        line:SetVertexColor(0, 0, 0, 1)
+    end
 
     -- ── Mark icon ─────────────────────────────────────────────────────
     -- Icon sits on ARTWORK; nothing above it except OVERLAY text.
@@ -5683,6 +5715,7 @@ function RaidAssignments:CreateYourMarkFrame()
     nameLabel:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 13)
     nameLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", infoLeft, -PAD)
     nameLabel:SetWidth(INFO_W)
+    nameLabel:SetHeight(16)
     nameLabel:SetJustifyH("LEFT")
     nameLabel:SetText("")
     nameLabel:SetTextColor(1, 1, 1, 1)
@@ -5714,7 +5747,7 @@ function RaidAssignments:CreateYourMarkFrame()
 
     -- HP percent (right edge of bar track, small)
     local hpPct = frame:CreateFontString(nil, "OVERLAY")
-    hpPct:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 9)
+    hpPct:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 13)
     hpPct:SetPoint("RIGHT", barTrack, "RIGHT", -2, 0)
     hpPct:SetText("")
     hpPct:SetTextColor(1, 1, 1, 1)
@@ -5723,14 +5756,16 @@ function RaidAssignments:CreateYourMarkFrame()
     frame.hpPct = hpPct
 
     -- ── Click ─────────────────────────────────────────────────────────
-    frame:SetScript("OnClick", function()
-        if arg1 == "LeftButton" then
+    -- OnMouseUp instead of OnClick so dragging doesn't trigger target-unit.
+    frame:SetScript("OnMouseUp", function()
+        if arg1 == "LeftButton" and not frame._wasDragging then
             local mi = frame.assignedMarkIndex
             if not mi then return end
             if UnitExists("mark"..mi) then
                 TargetUnit("mark"..mi)
             end
         end
+        frame._wasDragging = false
     end)
 
     -- ── Tooltip ───────────────────────────────────────────────────────
@@ -5747,7 +5782,7 @@ function RaidAssignments:CreateYourMarkFrame()
                 GameTooltip:AddLine("Mark not on any unit", 1, 0.5, 0.5)
             end
         end
-        GameTooltip:AddLine("Drag to move", 0.45, 0.45, 0.45)
+        GameTooltip:AddLine("Drag to move  |  Scroll to resize", 0.45, 0.45, 0.45)
         GameTooltip:Show()
     end)
     frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -5790,7 +5825,7 @@ function RaidAssignments:CreateYourMarkFrame()
     local soundBtn = CreateFrame("Button", nil, frame)
     soundBtn:SetWidth(14)
     soundBtn:SetHeight(14)
-    soundBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -3)
+    soundBtn:SetPoint("CENTER", frame, "TOPRIGHT", 0, 0)
     soundBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
 
     local soundBtnTex = soundBtn:CreateFontString(nil, "OVERLAY")
@@ -5834,11 +5869,12 @@ function RaidAssignments:CreateYourMarkFrame()
 end
 
 -- Set border colour + re-apply mark icon texcoords
+-- Border is always black regardless of mark colour
 function RaidAssignments:SetYourMarkFrameColor(r, g, b)
     local f = RaidAssignments.YourMarkFrame
     if not f then return end
     for _, line in ipairs(f.borderLines) do
-        line:SetVertexColor(r, g, b, 1)
+        line:SetVertexColor(0, 0, 0, 1)
     end
 end
 
@@ -5933,49 +5969,52 @@ function RaidAssignments:CreateYourCurseFrame()
 
     local ICON_SIZE = 32
 
+    local anchor = CreateFrame("Frame", "RaidAssignmentsYourCurseAnchor", UIParent)
+    anchor:SetWidth(1)
+    anchor:SetHeight(1)
+    anchor:SetMovable(true)
+    anchor:SetClampedToScreen(true)
+
+    local savedPoint = RaidAssignments_Settings["YourCurseFramePoint"] or "CENTER"
+    local savedRP    = RaidAssignments_Settings["YourCurseFrameRP"]    or "CENTER"
+    local savedX     = RaidAssignments_Settings["YourCurseFrameX"]     or 0
+    local savedY     = RaidAssignments_Settings["YourCurseFrameY"]     or -50
+    if savedPoint == "TOPLEFT" then
+        savedPoint, savedRP, savedX, savedY = "CENTER", "CENTER", 0, -50
+    end
+    anchor:SetPoint(savedPoint, UIParent, savedRP, savedX, savedY)
+
     local frame = CreateFrame("Frame", "RaidAssignmentsYourCurseFrame", UIParent)
     frame:SetWidth(ICON_SIZE)
     frame:SetHeight(ICON_SIZE)
-    frame:SetMovable(true)
+    -- NOTE: no SetMovable on frame; only anchor is movable
     frame:EnableMouse(true)
+    frame:EnableMouseWheel(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetFrameStrata("HIGH")
+    frame:SetPoint("CENTER", anchor, "CENTER", 0, 0)
 
-    -- Restore saved position, or fall back to default
-    local savedX     = RaidAssignments_Settings["YourCurseFrameX"]
-    local savedY     = RaidAssignments_Settings["YourCurseFrameY"]
-    local savedScale = RaidAssignments_Settings["YourCurseFrameScale"]
-    if savedX and savedY then
-        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", savedX, savedY)
-    else
-        frame:SetPoint("CENTER", UIParent, "CENTER", 400, -50)
-    end
-    if savedScale then
-        frame:SetScale(savedScale)
-    end
+    local savedScale = RaidAssignments_Settings["YourCurseFrameScale"] or 1.0
+    frame:SetScale(savedScale)
 
-    frame:SetScript("OnDragStart", function() this:StartMoving() end)
+    frame:SetScript("OnDragStart", function() anchor:StartMoving() end)
     frame:SetScript("OnDragStop", function()
-        this:StopMovingOrSizing()
-        local x, y = this:GetLeft(), this:GetTop()
-        RaidAssignments_Settings["YourCurseFrameX"] = x
-        RaidAssignments_Settings["YourCurseFrameY"] = y - UIParent:GetHeight()
-        this:ClearAllPoints()
-        this:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
-            RaidAssignments_Settings["YourCurseFrameX"],
-            RaidAssignments_Settings["YourCurseFrameY"])
+        anchor:StopMovingOrSizing()
+        local p, _, rp, x, y = anchor:GetPoint()
+        RaidAssignments_Settings["YourCurseFramePoint"] = p
+        RaidAssignments_Settings["YourCurseFrameRP"]    = rp
+        RaidAssignments_Settings["YourCurseFrameX"]     = x
+        RaidAssignments_Settings["YourCurseFrameY"]     = y
     end)
-    frame:EnableMouseWheel(true)
     frame:SetScript("OnMouseWheel", function()
-        local f = RaidAssignments.YourCurseFrame
-        local scale = f:GetScale()
+        local s = frame:GetScale()
         if arg1 > 0 then
-            scale = math.min(scale + 0.05, 3.0)
+            s = math.min(s + 0.05, 3.0)
         else
-            scale = math.max(scale - 0.05, 0.3)
+            s = math.max(s - 0.05, 0.3)
         end
-        f:SetScale(scale)
-        RaidAssignments_Settings["YourCurseFrameScale"] = scale
+        frame:SetScale(s)
+        RaidAssignments_Settings["YourCurseFrameScale"] = s
     end)
 
     -- Curse icon (fills the entire frame)
@@ -5996,8 +6035,7 @@ function RaidAssignments:CreateYourCurseFrame()
             GameTooltip:AddLine("Your Curse Assignment", 1, 1, 0.5)
             GameTooltip:AddLine(data and data.name or "Unknown", 1, 1, 1)
         end
-        GameTooltip:AddLine("Drag to move", 0.45, 0.45, 0.45)
-        GameTooltip:AddLine("Scroll to resize", 0.45, 0.45, 0.45)
+        GameTooltip:AddLine("Drag to move  |  Scroll to resize", 0.45, 0.45, 0.45)
         GameTooltip:Show()
     end)
     frame:SetScript("OnLeave", function() GameTooltip:Hide() end)

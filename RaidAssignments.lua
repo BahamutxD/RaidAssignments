@@ -4877,23 +4877,33 @@ SlashCmdList["RAIDASSIGNMENTS"] = function(msg)
             DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RaidAssignments:|r Usage: /rc custom [1-8]")
         end
     elseif cmd == "resetpos" then
-        -- Reset YourMarkFrame
-        RaidAssignments_Settings["YourMarkFrameX"] = nil
-        RaidAssignments_Settings["YourMarkFrameY"] = nil
+        -- Reset YourMarkFrame anchor + frame
+        RaidAssignments_Settings["YourMarkFrameX"]     = 0
+        RaidAssignments_Settings["YourMarkFrameY"]     = 0
+        RaidAssignments_Settings["YourMarkFramePoint"] = "CENTER"
+        RaidAssignments_Settings["YourMarkFrameRP"]    = "CENTER"
         RaidAssignments_Settings["YourMarkFrameScale"] = nil
+        local markAnchor = getglobal("RaidAssignmentsYourMarkAnchor")
+        if markAnchor then
+            markAnchor:ClearAllPoints()
+            markAnchor:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
         if RaidAssignments.YourMarkFrame then
             RaidAssignments.YourMarkFrame:SetScale(1.0)
-            RaidAssignments.YourMarkFrame:ClearAllPoints()
-            RaidAssignments.YourMarkFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
         end
-        -- Reset YourCurseFrame
-        RaidAssignments_Settings["YourCurseFrameX"] = nil
-        RaidAssignments_Settings["YourCurseFrameY"] = nil
+        -- Reset YourCurseFrame anchor + frame
+        RaidAssignments_Settings["YourCurseFrameX"]     = 0
+        RaidAssignments_Settings["YourCurseFrameY"]     = -50
+        RaidAssignments_Settings["YourCurseFramePoint"] = "CENTER"
+        RaidAssignments_Settings["YourCurseFrameRP"]    = "CENTER"
         RaidAssignments_Settings["YourCurseFrameScale"] = nil
+        local curseAnchor = getglobal("RaidAssignmentsYourCurseAnchor")
+        if curseAnchor then
+            curseAnchor:ClearAllPoints()
+            curseAnchor:SetPoint("CENTER", UIParent, "CENTER", 0, -50)
+        end
         if RaidAssignments.YourCurseFrame then
             RaidAssignments.YourCurseFrame:SetScale(1.0)
-            RaidAssignments.YourCurseFrame:ClearAllPoints()
-            RaidAssignments.YourCurseFrame:SetPoint("CENTER", UIParent, "CENTER", 0, -50)
         end
         DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99RaidAssignments:|r Frames reset to center of screen.")
     else

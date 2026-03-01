@@ -991,7 +991,7 @@ function RaidAssignments:ConfigMainFrame()
         insets  = { left = 0, right = 0, top = 0, bottom = 0 }
     }
 
-    self:SetFrameStrata("DIALOG")
+    self:SetFrameStrata("FULLSCREEN")
     self:SetWidth(RaidAssignments.Settings["MainFrameX"])
     self:SetHeight(RaidAssignments.Settings["MainFrameY"])
     self:SetPoint("CENTER", 0, 60)
@@ -1103,7 +1103,7 @@ function RaidAssignments:ConfigMainFrame()
         classframe:SetWidth(CLASS_ICON_SIZE)
         classframe:SetHeight(CLASS_ICON_SIZE)
         classframe:SetPoint("TOPLEFT", classIconStartX + (i - 1) * (CLASS_ICON_SIZE + CLASS_ICON_GAP), classIconY)
-        classframe:SetFrameStrata("DIALOG")
+        classframe:SetFrameStrata("FULLSCREEN")
 
         -- Dark background
         local cfBg = classframe:CreateTexture(nil, "BACKGROUND")
@@ -1237,7 +1237,7 @@ function RaidAssignments:ConfigMainFrame()
             ghost:SetHeight(25)
             -- Match player frame anchor exactly
             ghost:SetPoint("RIGHT", parent, "RIGHT", 5 + (85 * slot), 0)
-            ghost:SetFrameStrata("BACKGROUND")
+            ghost:SetFrameStrata("MEDIUM")
             -- Top edge
             local eT = ghost:CreateTexture(nil, "ARTWORK")
             eT:SetTexture("Interface\\Buttons\\WHITE8X8") eT:SetVertexColor(1,1,1,0.06) eT:SetHeight(1)
@@ -1265,7 +1265,7 @@ function RaidAssignments:ConfigMainFrame()
         -- Row position: mark 8 → row 0 (top), mark 1 → row 7
         local row = 8 - i
         icon:SetPoint("TOPLEFT", self.bg, "TOPLEFT", ICON_X_TANK, COL_TOP - (row * ROW_H))
-        icon:SetFrameStrata("DIALOG")
+        icon:SetFrameStrata("FULLSCREEN")
         icon:EnableMouse(true)
         icon:SetScript("OnEnter", function() RaidAssignments:OpenToolTip(this:GetName()) end)
         icon:SetScript("OnLeave", function() end)
@@ -1313,7 +1313,7 @@ function RaidAssignments:ConfigMainFrame()
         icon:SetHeight(ICON_SIZE)
         local curseRow = (12 - i)  -- 12→0, 11→1, 10→2, 9→3
         icon:SetPoint("TOPLEFT", self.bg, "TOPLEFT", ICON_X_TANK, CURSE_OFFSET - (curseRow * ROW_H))
-        icon:SetFrameStrata("DIALOG")
+        icon:SetFrameStrata("FULLSCREEN")
         icon:EnableMouse(true)
         icon:SetScript("OnEnter", function() RaidAssignments:OpenToolTip(this:GetName()) end)
         icon:SetScript("OnLeave", function() end)
@@ -1347,7 +1347,7 @@ function RaidAssignments:ConfigMainFrame()
         if row >= 4 then groupGap = groupGap + 14 end
         if row >= 8 then groupGap = groupGap + 14 end
         icon:SetPoint("TOPLEFT", self.bg, "TOPLEFT", ICON_X_HEAL, COL_TOP - (row * ROW_H) - groupGap)
-        icon:SetFrameStrata("DIALOG")
+        icon:SetFrameStrata("FULLSCREEN")
         icon:EnableMouse(true)
         icon:SetScript("OnEnter", function() RaidAssignments:OpenHealToolTip(this:GetName()) end)
         icon:SetScript("OnLeave", function() end)
@@ -1386,7 +1386,7 @@ function RaidAssignments:ConfigMainFrame()
     -- ── Confirm dialog helper ─────────────────────────────────────────────────
     local function ShowConfirmDialog(msg, onConfirm)
         local d = CreateFrame("Frame", nil, UIParent)
-        d:SetFrameStrata("TOOLTIP")
+        d:SetFrameStrata("FULLSCREEN_DIALOG")
         d:SetWidth(280)
         d:SetHeight(100)
         d:SetPoint("CENTER", 0, 0)
@@ -1454,7 +1454,7 @@ function RaidAssignments:ConfigMainFrame()
         self.CloseButton.label:SetTextColor(0.90, 0.35, 0.35, 1)
     end)
     self.CloseButton:SetPoint("TOPRIGHT", self.bg, "TOPRIGHT", -4, -4)
-    self.CloseButton:SetFrameStrata("DIALOG")
+    self.CloseButton:SetFrameStrata("FULLSCREEN")
 
     self.yourMarkToggle = RaidAssignments:MakeBtn(self.bg, 80, 22, "Your Mark", function()
         PlaySound("igMainMenuOptionCheckBoxOn")
@@ -1640,7 +1640,7 @@ function RaidAssignments:ConfigMainFrame()
         end
     end)
     self.tankButton:SetPoint("BOTTOMLEFT", self.bg, "BOTTOMLEFT", ROW1_X, ROW1_Y)
-    self.tankButton:SetFrameStrata("DIALOG")
+    self.tankButton:SetFrameStrata("FULLSCREEN")
     TintCyan(self.tankButton)
 
     self.healButton = RaidAssignments:MakeBtn(self.bg, ROW1_W, 24, "Post Healers", function()
@@ -1650,7 +1650,7 @@ function RaidAssignments:ConfigMainFrame()
         end
     end)
     self.healButton:SetPoint("LEFT", self.tankButton, "RIGHT", ROW1_GAP, 0)
-    self.healButton:SetFrameStrata("DIALOG")
+    self.healButton:SetFrameStrata("FULLSCREEN")
     TintCyan(self.healButton)
 
     self.cursesButton = RaidAssignments:MakeBtn(self.bg, ROW1_W, 24, "Post Curses", function()
@@ -1669,7 +1669,7 @@ function RaidAssignments:ConfigMainFrame()
         end
     end)
     self.dbutton:SetPoint("LEFT", self.cursesButton, "RIGHT", ROW1_GAP, 0)
-    self.dbutton:SetFrameStrata("DIALOG")
+    self.dbutton:SetFrameStrata("FULLSCREEN")
     TintCyan(self.dbutton)
 
     self.generalButton = RaidAssignments:MakeBtn(self.bg, ROW1_W, 24, "General Assignments", function()
@@ -1692,7 +1692,7 @@ function RaidAssignments:ConfigMainFrame()
         PlaySound("igMainMenuOptionCheckBoxOn")
         if not RaidAssignments.CthunFrame then
             RaidAssignments.CthunFrame = CreateFrame("Frame", "RaidAssignmentsCthunFrame", UIParent)
-            RaidAssignments.CthunFrame:SetFrameStrata("DIALOG")
+            RaidAssignments.CthunFrame:SetFrameStrata("FULLSCREEN")
             RaidAssignments.CthunFrame:SetWidth(512)
             RaidAssignments.CthunFrame:SetHeight(512)
             RaidAssignments.CthunFrame:SetPoint("CENTER", 0, 0)
@@ -1717,7 +1717,7 @@ function RaidAssignments:ConfigMainFrame()
         PlaySound("igMainMenuOptionCheckBoxOn")
         if not RaidAssignments.FourHFrame then
             RaidAssignments.FourHFrame = CreateFrame("Frame", "RaidAssignmentsFourHFrame", UIParent)
-            RaidAssignments.FourHFrame:SetFrameStrata("DIALOG")
+            RaidAssignments.FourHFrame:SetFrameStrata("FULLSCREEN")
             RaidAssignments.FourHFrame:SetWidth(512)
             RaidAssignments.FourHFrame:SetHeight(512)
             RaidAssignments.FourHFrame:SetPoint("CENTER", 0, 0)
@@ -1742,7 +1742,7 @@ function RaidAssignments:ConfigMainFrame()
         PlaySound("igMainMenuOptionCheckBoxOn")
         if not RaidAssignments.KTFrame then
             RaidAssignments.KTFrame = CreateFrame("Frame", "RaidAssignmentsKTFrame", UIParent)
-            RaidAssignments.KTFrame:SetFrameStrata("DIALOG")
+            RaidAssignments.KTFrame:SetFrameStrata("FULLSCREEN")
             RaidAssignments.KTFrame:SetWidth(512)
             RaidAssignments.KTFrame:SetHeight(512)
             RaidAssignments.KTFrame:SetPoint("CENTER", 0, 0)
@@ -1764,7 +1764,7 @@ function RaidAssignments:ConfigMainFrame()
     self.ktButton:SetPoint("BOTTOMLEFT", self.bg, "BOTTOMLEFT", ROW2_X + 8 * (ROW2_W + ROW2_GAP), ROW2_Y)
 
 	-- Initialize GeneralToolTip Frame
-    RaidAssignments.GeneralToolTip:SetFrameStrata("DIALOG")
+    RaidAssignments.GeneralToolTip:SetFrameStrata("FULLSCREEN")
     RaidAssignments.GeneralToolTip:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -1786,18 +1786,18 @@ function RaidAssignments:ConfigMainFrame()
     end)
 
     -- Tooltips should be on HIGHER strata than main frames
-    RaidAssignments.ToolTip:SetFrameStrata("DIALOG")
-    RaidAssignments.HealToolTip:SetFrameStrata("DIALOG")
-    RaidAssignments.GeneralToolTip:SetFrameStrata("DIALOG")
+    RaidAssignments.ToolTip:SetFrameStrata("FULLSCREEN")
+    RaidAssignments.HealToolTip:SetFrameStrata("FULLSCREEN")
+    RaidAssignments.GeneralToolTip:SetFrameStrata("FULLSCREEN")
 
     -- Main frames should be on LOWER strata than tooltips
-    RaidAssignments:SetFrameStrata("MEDIUM")
-    RaidAssignments.GeneralAssignments:SetFrameStrata("MEDIUM")
+    RaidAssignments:SetFrameStrata("DIALOG")
+    RaidAssignments.GeneralAssignments:SetFrameStrata("DIALOG")
 
     -- Initialize custom frames strata if they exist
     for i = 1, 8 do
         if RaidAssignments.CustomFrames[i] and RaidAssignments.CustomFrames[i].frame then
-            RaidAssignments.CustomFrames[i].frame:SetFrameStrata("MEDIUM")
+            RaidAssignments.CustomFrames[i].frame:SetFrameStrata("DIALOG")
         end
     end
 
@@ -1832,7 +1832,7 @@ function RaidAssignments:ConfigGeneralFrame()
         insets   = { left = 0, right = 0, top = 0, bottom = 0 }
     }
 
-    RaidAssignments.GeneralAssignments:SetFrameStrata("MEDIUM")
+    RaidAssignments.GeneralAssignments:SetFrameStrata("DIALOG")
     RaidAssignments.GeneralAssignments:SetWidth(RaidAssignments.Settings["GeneralFrameX"])
     RaidAssignments.GeneralAssignments:SetHeight(RaidAssignments.Settings["GeneralFrameY"])
     RaidAssignments.GeneralAssignments:SetPoint("CENTER", 0, 60)
@@ -1907,7 +1907,7 @@ function RaidAssignments:ConfigGeneralFrame()
         classframe:SetWidth(CLASS_ICON_SIZE_G)
         classframe:SetHeight(CLASS_ICON_SIZE_G)
         classframe:SetPoint("TOPLEFT", classIconStartX + (i - 1) * (CLASS_ICON_SIZE_G + CLASS_ICON_GAP_G), classIconY)
-        classframe:SetFrameStrata("MEDIUM")
+        classframe:SetFrameStrata("DIALOG")
 
         local cfBg2 = classframe:CreateTexture(nil, "BACKGROUND")
         cfBg2:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -1986,7 +1986,7 @@ function RaidAssignments:ConfigGeneralFrame()
             ghost:SetWidth(80)
             ghost:SetHeight(25)
             ghost:SetPoint("RIGHT", parent, "RIGHT", 5 + (85 * slot), 0)
-            ghost:SetFrameStrata("MEDIUM")
+            ghost:SetFrameStrata("DIALOG")
             local eT = ghost:CreateTexture(nil, "ARTWORK")
             eT:SetTexture("Interface\\Buttons\\WHITE8X8") eT:SetVertexColor(1,1,1,0.06) eT:SetHeight(1)
             eT:SetPoint("TOPLEFT",ghost,"TOPLEFT",0,0) eT:SetPoint("TOPRIGHT",ghost,"TOPRIGHT",0,0)
@@ -2007,7 +2007,7 @@ function RaidAssignments:ConfigGeneralFrame()
         icon:SetWidth(35)
         icon:SetHeight(35)
         icon:SetPoint("TOPLEFT", 50, -75 - ((35 + padding) * (i - 1)))
-        icon:SetFrameStrata("MEDIUM")
+        icon:SetFrameStrata("DIALOG")
         icon:EnableMouse(true)
         icon:SetScript("OnEnter", function() RaidAssignments:OpenGeneralToolTip(this:GetName()) end)
         icon:SetScript("OnLeave", function() end)
@@ -2025,7 +2025,7 @@ function RaidAssignments:ConfigGeneralFrame()
         icon:SetWidth(35)
         icon:SetHeight(35)
         icon:SetPoint("TOPLEFT", 50, -75 - ((35 + padding) * (i - 1) + (i - 9) * 30))
-        icon:SetFrameStrata("MEDIUM")
+        icon:SetFrameStrata("DIALOG")
         icon:EnableMouse(true)
         icon:SetScript("OnEnter", function()
             RaidAssignments:OpenGeneralToolTip(this:GetName())
@@ -2086,12 +2086,12 @@ function RaidAssignments:ConfigGeneralFrame()
         closeBtn.label:SetTextColor(0.90, 0.35, 0.35, 1)
     end)
     closeBtn:SetPoint("TOPRIGHT", self.generalBg, "TOPRIGHT", -4, -4)
-    closeBtn:SetFrameStrata("MEDIUM")
+    closeBtn:SetFrameStrata("DIALOG")
 
     -- Reset All Button - TOP RIGHT, next to Close
     local resetBtn = RaidAssignments:MakeBtn(self.generalBg, 90, 22, "Reset All", nil)
     resetBtn:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
-    resetBtn:SetFrameStrata("MEDIUM")
+    resetBtn:SetFrameStrata("DIALOG")
     resetBtn:SetScript("OnClick", function()
         if IsRaidOfficer() then
             PlaySound("igMainMenuOptionCheckBoxOn")
@@ -2123,7 +2123,7 @@ function RaidAssignments:ConfigGeneralFrame()
         end
     end)
     postBtn:SetPoint("BOTTOM", self.generalBg, "BOTTOM", btnStartX, btnY)
-    postBtn:SetFrameStrata("MEDIUM")
+    postBtn:SetFrameStrata("DIALOG")
 
     -- Back to Main Button
     local backBtn = RaidAssignments:MakeBtn(self.generalBg, 145, 24, "Back to Main", function()
@@ -2134,7 +2134,7 @@ function RaidAssignments:ConfigGeneralFrame()
         RaidAssignments:Show()
     end)
     backBtn:SetPoint("LEFT", postBtn, "RIGHT", btnSpacing, 0)
-    backBtn:SetFrameStrata("MEDIUM")
+    backBtn:SetFrameStrata("DIALOG")
 
     self.generalBg:Hide()
     RaidAssignments.GeneralAssignments:Hide()
@@ -2819,7 +2819,7 @@ function RaidAssignments:OpenToolTip(frameName)
             end)
         end
 
-        RaidAssignments.ToolTip:SetFrameStrata("DIALOG")
+        RaidAssignments.ToolTip:SetFrameStrata("FULLSCREEN")
 
         -- Now create the player frames
         for col = 1, numColumns do
@@ -2957,7 +2957,7 @@ function RaidAssignments:OpenHealToolTip(frameName)
             end)
         end
 
-        RaidAssignments.HealToolTip:SetFrameStrata("DIALOG")
+        RaidAssignments.HealToolTip:SetFrameStrata("FULLSCREEN")
 
         -- Now create the player frames
         for col = 1, numColumns do
@@ -4251,7 +4251,7 @@ function RaidAssignments:ConfigCustomFrame(i)
     RaidAssignments_Settings.CustomWindowTitles = RaidAssignments_Settings.CustomWindowTitles or {}
 
     local frame = CreateFrame("Frame", name, UIParent)
-    frame:SetFrameStrata("MEDIUM")
+    frame:SetFrameStrata("DIALOG")
     frame:SetWidth(620)
     frame:SetHeight(560)
     frame:SetPoint("CENTER", 0, 100)
@@ -4323,7 +4323,7 @@ function RaidAssignments:ConfigCustomFrame(i)
         classframe:SetWidth(CLASS_ICON_SIZE_C)
         classframe:SetHeight(CLASS_ICON_SIZE_C)
         classframe:SetPoint("TOPLEFT", classIconStartX + (iconIndex - 1) * (CLASS_ICON_SIZE_C + CLASS_ICON_GAP_C), classIconY)
-        classframe:SetFrameStrata("MEDIUM")
+        classframe:SetFrameStrata("DIALOG")
 
         -- Dark background
         local cfBg = classframe:CreateTexture(nil, "BACKGROUND")
@@ -4420,12 +4420,12 @@ function RaidAssignments:ConfigCustomFrame(i)
         frame.closeButton.label:SetTextColor(0.90, 0.35, 0.35, 1)
     end)
     frame.closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
-    frame.closeButton:SetFrameStrata("MEDIUM")
+    frame.closeButton:SetFrameStrata("DIALOG")
 
     -- Remove All Button
     local removeAllBtn = RaidAssignments:MakeBtn(frame, 100, 22, "Remove All", nil)
     removeAllBtn:SetPoint("TOPRIGHT", frame.closeButton, "TOPLEFT", -8, 0)
-    removeAllBtn:SetFrameStrata("MEDIUM")
+    removeAllBtn:SetFrameStrata("DIALOG")
     removeAllBtn:SetScript("OnClick", function()
         if IsRaidOfficer() then
             PlaySound("igMainMenuOptionCheckBoxOn")
@@ -4469,7 +4469,7 @@ function RaidAssignments:ConfigCustomFrame(i)
             ghost:SetHeight(25)
             -- Matches: f:SetPoint("LEFT", markFrame, "RIGHT", 10 + (85*(slot-1)), 0)
             ghost:SetPoint("LEFT", parent, "RIGHT", 10 + (85 * (slot - 1)), 0)
-            ghost:SetFrameStrata("MEDIUM")
+            ghost:SetFrameStrata("DIALOG")
             local eT = ghost:CreateTexture(nil, "ARTWORK")
             eT:SetTexture("Interface\\Buttons\\WHITE8X8") eT:SetVertexColor(1,1,1,0.06) eT:SetHeight(1)
             eT:SetPoint("TOPLEFT",ghost,"TOPLEFT",0,0) eT:SetPoint("TOPRIGHT",ghost,"TOPRIGHT",0,0)
@@ -4560,7 +4560,7 @@ function RaidAssignments:ConfigCustomFrame(i)
         end
     end)
     postBtn:SetPoint("BOTTOM", frame, "BOTTOM", -100, 20)
-    postBtn:SetFrameStrata("MEDIUM")
+    postBtn:SetFrameStrata("DIALOG")
 
     local backBtn = RaidAssignments:MakeBtn(frame, 160, 24, "Back to Main", function()
         PlaySound("igMainMenuOptionCheckBoxOn")
@@ -4572,7 +4572,7 @@ function RaidAssignments:ConfigCustomFrame(i)
         RaidAssignments:Show()
     end)
     backBtn:SetPoint("BOTTOM", frame, "BOTTOM", 100, 20)
-    backBtn:SetFrameStrata("MEDIUM")
+    backBtn:SetFrameStrata("DIALOG")
 
     frame:Hide()
     RaidAssignments.CustomFrames[i].frame = frame
@@ -4672,7 +4672,7 @@ function RaidAssignments:UpdateCustom(i)
 
                         f:EnableMouse(true)
                         f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-                        f:SetFrameStrata("HIGH")
+                        f:SetFrameStrata("TOOLTIP")
 
                         RaidAssignments.CustomFrames[i].frames[mark][pname] = f
                     end
@@ -4876,7 +4876,7 @@ function RaidAssignments:OpenCustomToolTip(frameName, customIndex)
         -- Create tooltip frame if it doesn't exist, otherwise reuse
         if not RaidAssignments.CustomToolTip then
             RaidAssignments.CustomToolTip = CreateFrame("Frame", "RaidAssignmentsCustomToolTip", UIParent)
-            RaidAssignments.CustomToolTip:SetFrameStrata("DIALOG")
+            RaidAssignments.CustomToolTip:SetFrameStrata("FULLSCREEN")
             RaidAssignments.CustomToolTip:SetBackdrop({
                 bgFile = "Interface/Tooltips/UI-Tooltip-Background",
                 edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
@@ -5235,7 +5235,7 @@ function RaidAssignments:OpenGeneralToolTip(frameName)
         RaidAssignments.GeneralToolTip:SetPoint("TOPRIGHT", frameName, "TOPLEFT", 0, 0)
 
         -- ENSURE PROPER STRATA WHEN SHOWN
-        RaidAssignments.GeneralToolTip:SetFrameStrata("DIALOG")
+        RaidAssignments.GeneralToolTip:SetFrameStrata("FULLSCREEN")
 
         -- Store references
         RaidAssignments.GeneralToolTip.originalMark = _G[frameName]
@@ -5519,7 +5519,7 @@ function RaidAssignments:CreateMinimapButton()
     end
 
     local button = CreateFrame("Button", "RaidAssignmentsMinimapButton", Minimap)
-    button:SetFrameStrata("HIGH")
+    button:SetFrameStrata("TOOLTIP")
     button:SetWidth(33)
     button:SetHeight(33)
     button:EnableMouse(true)
@@ -5648,7 +5648,7 @@ function RaidAssignments:CreateYourMarkFrame()
     frame:EnableMouse(true)
     frame:EnableMouseWheel(true)
     frame:RegisterForDrag("LeftButton")
-    frame:SetFrameStrata("HIGH")
+    frame:SetFrameStrata("TOOLTIP")
     frame:SetPoint("CENTER", anchor, "CENTER", 0, 0)
 
     local savedScale = RaidAssignments_Settings["YourMarkFrameScale"] or 1.0
@@ -6039,7 +6039,7 @@ function RaidAssignments:CreateYourCurseFrame()
     frame:EnableMouse(true)
     frame:EnableMouseWheel(true)
     frame:RegisterForDrag("LeftButton")
-    frame:SetFrameStrata("HIGH")
+    frame:SetFrameStrata("TOOLTIP")
     frame:SetPoint("CENTER", anchor, "CENTER", 0, 0)
 
     local savedScale = RaidAssignments_Settings["YourCurseFrameScale"] or 1.0

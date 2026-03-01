@@ -424,6 +424,56 @@ function RaidAssignments:OnEvent()
             if origSetItemRef then origSetItemRef(link, text, button) end
         end
 
+        -- ── Unit tooltip hook: show assigned players for raid-marked units ──────
+        -- Appends "<MarkName>: <PlayerName>" lines in the mark's colour.
+        -- Guard against double-decoration (target frame calls SetUnit repeatedly).
+        RaidAssignments._RA_lastDecorated = {unit = nil, markIndex = nil}
+
+        RaidAssignments.DecorateTooltip = function(unit)
+            if not UnitExists(unit) then return end
+            local markIndex = GetRaidTargetIndex(unit)
+            if not markIndex or markIndex < 1 or markIndex > 8 then return end
+
+            if RaidAssignments._RA_lastDecorated.unit == unit and
+               RaidAssignments._RA_lastDecorated.markIndex == markIndex then
+                return
+            end
+            RaidAssignments._RA_lastDecorated.unit      = unit
+            RaidAssignments._RA_lastDecorated.markIndex = markIndex
+
+            local slots = RaidAssignments.Marks[markIndex]
+            if not slots then return end
+            local assignedNames = {}
+            for _, pname in pairs(slots) do
+                if pname and pname ~= "" then
+                    assignedNames[table.getn(assignedNames) + 1] = pname
+                end
+            end
+            if table.getn(assignedNames) == 0 then return end
+
+            local col       = RaidAssignments.MarkColors[markIndex] or {1, 1, 1}
+            local hex       = string.format("%02x%02x%02x",
+                                  math.floor(col[1]*255),
+                                  math.floor(col[2]*255),
+                                  math.floor(col[3]*255))
+            local markName  = RaidAssignments.RealMarks[markIndex] or ("Mark "..markIndex)
+            local label     = "|cff"..hex..markName..":|r"
+
+            for _, pname in ipairs(assignedNames) do
+                GameTooltip:AddLine(label.."  "..pname, 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end
+
+        local origSetUnit = GameTooltip.SetUnit
+        GameTooltip.SetUnit = function(tooltip, unit)
+            RaidAssignments._RA_lastDecorated.unit      = nil
+            RaidAssignments._RA_lastDecorated.markIndex = nil
+            origSetUnit(tooltip, unit)
+            RaidAssignments.DecorateTooltip(unit)
+        end
+        -- ─────────────────────────────────────────────────────────────────────
+
         RaidAssignments:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "RAID_ROSTER_UPDATE" or event == "UNIT_PORTRAIT_UPDATE" then
@@ -727,15 +777,16 @@ elseif event == "CHAT_MSG_ADDON" then
             end
         end
     end)
+
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
-        if UnitExists("mouseover") and GetRaidTargetIndex("mouseover") then
-            local index = GetRaidTargetIndex("mouseover")
-            if RaidAssignments.Marks[index] and table.getn(RaidAssignments.Marks[index]) > 0 then
-                local names = table.concat(RaidAssignments.Marks[index], " ")
-                GameTooltip:AddDoubleLine("RaidAssignments", names, 0.78, 0.61, 0.43, 1, 1, 1)
-            end
+        -- 3D world tooltip: engine populates GameTooltip itself, then fires this event.
+        if UnitExists("mouseover") and RaidAssignments.DecorateTooltip then
+            RaidAssignments._RA_lastDecorated.unit      = nil
+            RaidAssignments._RA_lastDecorated.markIndex = nil
+            RaidAssignments.DecorateTooltip("mouseover")
         end
-    end
+    end  -- closes if event == "ADDON_LOADED" / elseif chain
+
 end
 
 -- ── Shared custom button skin helper ─────────────────────────────────────────
@@ -5825,7 +5876,7 @@ function RaidAssignments:CreateYourMarkFrame()
     local soundBtn = CreateFrame("Button", nil, frame)
     soundBtn:SetWidth(14)
     soundBtn:SetHeight(14)
-    soundBtn:SetPoint("CENTER", frame, "TOPRIGHT", 0, 0)
+    soundBtn:SetPoint("CENTER", frame, "TOPRIGHT", -7, -7)
     soundBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
 
     local soundBtnTex = soundBtn:CreateFontString(nil, "OVERLAY")

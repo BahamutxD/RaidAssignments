@@ -5852,10 +5852,11 @@ function RaidAssignments:CreateYourMarkFrame()
     frame:SetScript("OnUpdate", function()
         local f = frame
         if not f or not f:IsShown() then return end
+
         local mi = f.assignedMarkIndex
         if not mi then return end
         local mu = "mark"..mi
-        if UnitExists(mu) then
+        if UnitExists(mu) and UnitHealth(mu) > 0 then
             f.nameLabel:SetText(UnitName(mu) or "")
 
             local hp    = UnitHealth(mu)    or 0
@@ -5876,9 +5877,9 @@ function RaidAssignments:CreateYourMarkFrame()
                 f.hpBar:SetVertexColor(1, pct * 2, 0, 1)
             end
         else
-            f.nameLabel:SetText("|cff666666no unit|r")
-            f.hpPct:SetText("")
-            f.hpBar:SetWidth(1)
+            -- No valid target or target is dead — hide the frame
+            f.assignedMarkIndex = nil
+            f:Hide()
         end
     end)
 
@@ -5927,6 +5928,21 @@ function RaidAssignments:CreateYourMarkFrame()
     frame.assignedMarkIndex = nil
     frame:Hide()
     RaidAssignments.YourMarkFrame = frame
+
+    -- ── Always-running ticker: polls every 0.5s even when the mark frame is hidden.
+    -- OnUpdate does NOT fire on hidden frames in WoW 1.12, so we need a separate
+    -- always-visible frame to drive the check.
+    local ticker = CreateFrame("Frame", "RaidAssignmentsMarkTicker", UIParent)
+    ticker:SetWidth(1)
+    ticker:SetHeight(1)
+    ticker:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    ticker._t = 0
+    ticker:SetScript("OnUpdate", function()
+        ticker._t = ticker._t + arg1
+        if ticker._t < 0.5 then return end
+        ticker._t = 0
+        RaidAssignments:UpdateYourMarkFrame()
+    end)
 end
 
 -- Set border colour + re-apply mark icon texcoords
@@ -5968,6 +5984,8 @@ function RaidAssignments:UpdateYourMarkFrame()
         if not UnitExists(unitId) or UnitHealth(unitId) <= 0 then
             RaidAssignments.YourMarkFrame.assignedMarkIndex = nil
             RaidAssignments.YourMarkFrame:Hide()
+            -- Clear target so the next valid unit on this mark fires a new notification
+            RaidAssignments._lastNotifiedTarget = nil
             return
         end
 
@@ -5984,12 +6002,14 @@ function RaidAssignments:UpdateYourMarkFrame()
 
         frame:Show()
 
-        -- Chat notification: only fire when the mark assignment changes
-        if RaidAssignments._lastNotifiedMark ~= foundMark then
-            RaidAssignments._lastNotifiedMark = foundMark
+        -- Chat notification: fire when the mark index OR the unit on that mark changes
+        local currentTarget = UnitExists("mark"..foundMark) and UnitName("mark"..foundMark) or nil
+        if RaidAssignments._lastNotifiedMark ~= foundMark or RaidAssignments._lastNotifiedTarget ~= currentTarget then
+            RaidAssignments._lastNotifiedMark   = foundMark
+            RaidAssignments._lastNotifiedTarget = currentTarget
             local markName = RaidAssignments.RealMarks[foundMark] or ("Mark "..foundMark)
             local unitId   = "mark"..foundMark
-            local targetName = UnitExists(unitId) and UnitName(unitId) or nil
+            local targetName = currentTarget
             local col3 = RaidAssignments.MarkColors[foundMark] or {0.8, 0.8, 0.8}
             local r, g, b = col3[1], col3[2], col3[3]
             local hexCol = string.format("%02x%02x%02x",
@@ -6007,7 +6027,8 @@ function RaidAssignments:UpdateYourMarkFrame()
         RaidAssignments.YourMarkFrame.assignedMarkIndex = nil
         RaidAssignments.YourMarkFrame:Hide()
         -- Clear notification state when unassigned
-        RaidAssignments._lastNotifiedMark = nil
+        RaidAssignments._lastNotifiedMark   = nil
+        RaidAssignments._lastNotifiedTarget = nil
     end
 end
 

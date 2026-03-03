@@ -1,6 +1,55 @@
 BINDING_HEADER_RAIDASSIGNMENTS = "Raid Assignments"
 BINDING_NAME_RAIDASSIGNMENTS_TARGET_MARK = "Target Your Mark"
 
+-- Helper: apply class colour to a modern-style player frame.
+-- Must be defined before any frame builder functions that reference it.
+local function RA_ApplyFrameColor(frame, r, g, b)
+    if frame.borderLines then
+        for _, ln in ipairs(frame.borderLines) do
+            ln:SetVertexColor(r, g, b, 1)
+        end
+    end
+    if frame.fill then
+        frame.fill:SetVertexColor(r * 0.18, g * 0.18, b * 0.18, 0.85)
+    end
+    if frame.glow then
+        frame.glow:SetVertexColor(r, g, b, 0.15)
+    end
+    -- Keep texture alias in sync for legacy callers
+    if frame.texture and frame.texture ~= frame.fill then
+        frame.texture:SetVertexColor(r, g, b, 1)
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Chat message queue
+-- WoW 1.12 silently throttles SendChatMessage after ~4 rapid calls in a row.
+-- PostAssignments can generate 20+ lines at once (headers + tank + curse +
+-- heal rows), so everything past the first few gets dropped.
+-- We queue all outgoing chat and drain one message every 0.35s via OnUpdate.
+-- ---------------------------------------------------------------------------
+local RA_MsgQueue     = {}
+local RA_MsgTimer     = 0
+local RA_MSG_INTERVAL = 0.35  -- seconds between messages (safe under throttle)
+
+local function RA_QueueMessage(text, channel, lang, target)
+    table.insert(RA_MsgQueue, { text = text, channel = channel, lang = lang, target = target })
+end
+
+-- Ticker frame: always shown so OnUpdate fires even when the main frame is hidden.
+local RA_MsgTicker = CreateFrame("Frame", "RaidAssignmentsMsgTicker", UIParent)
+RA_MsgTicker:SetWidth(1)
+RA_MsgTicker:SetHeight(1)
+RA_MsgTicker:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+RA_MsgTicker:SetScript("OnUpdate", function()
+    RA_MsgTimer = RA_MsgTimer + arg1
+    if RA_MsgTimer < RA_MSG_INTERVAL then return end
+    RA_MsgTimer = 0
+    if table.getn(RA_MsgQueue) == 0 then return end
+    local msg = table.remove(RA_MsgQueue, 1)
+    SendChatMessage(msg.text, msg.channel, msg.lang, msg.target)
+end)
+
 RaidAssignments = CreateFrame("Button", "RaidAssignments", UIParent)
 RaidAssignments.ToolTip = CreateFrame("Button", "ToolTip", UIParent)
 RaidAssignments.HealToolTip = CreateFrame("Button", "HealToolTip", UIParent)
@@ -20,7 +69,7 @@ RaidAssignments_Settings["useWhisper"] = RaidAssignments_Settings["useWhisper"] 
 RaidAssignments.Settings = {
 	["MainFrame"] = false,
 	["Animation"] = false,
-	["MainFrameX"] = 960,
+	["MainFrameX"] = 975,
 	["MainFrameY"] = 680,
 	["SizeX"] = 0,
 	["SizeY"] = 0,
@@ -226,7 +275,7 @@ RaidAssignments._recvSeq = {
     custom  = { 0, 0, 0, 0, 0, 0, 0, 0 },
 }
 
--- ─── Chunked addon message system ────────────────────────────────────────────
+-- --- Chunked addon message system --------------------------------------------
 -- Vanilla WoW 1.12 caps SendAddonMessage payloads at 255 bytes.
 -- With 40-player raids the mark data easily exceeds that, so we split the
 -- payload into up to 200-byte pieces (leaving room for the chunk header) and
@@ -326,7 +375,7 @@ local function SeqDecode(raw)
     return 1, raw
 end
 
--- ─── Roster cache ────────────────────────────────────────────────────────────
+-- --- Roster cache ------------------------------------------------------------
 -- Rebuilt on RAID_ROSTER_UPDATE so GetClassColors / IsInRaid are O(1) lookups
 -- instead of iterating up to 40 UnitName/UnitClass calls per query.
 -- _rosterCache[name] = class  (string, e.g. "Warrior")
@@ -382,7 +431,7 @@ local function GetCachedClass(name)
     return RaidAssignments._rosterCache[name]
 end
 
--- ─────────────────────────────────────────────────────────────────────────────
+-- -----------------------------------------------------------------------------
 
 -- events
 RaidAssignments:RegisterEvent("ADDON_LOADED")
@@ -482,7 +531,7 @@ function RaidAssignments:OnEvent()
             if origSetItemRef then origSetItemRef(link, text, button) end
         end
 
-        -- ── Unit tooltip hook: show assigned players for raid-marked units ──────
+        -- -- Unit tooltip hook: show assigned players for raid-marked units ------
         -- Appends "<MarkName>: <PlayerName>" lines in the mark's colour.
         -- Guard against double-decoration (target frame calls SetUnit repeatedly).
         RaidAssignments._RA_lastDecorated = {unit = nil, markIndex = nil}
@@ -530,7 +579,7 @@ function RaidAssignments:OnEvent()
             origSetUnit(tooltip, unit)
             RaidAssignments.DecorateTooltip(unit)
         end
-        -- ─────────────────────────────────────────────────────────────────────
+        -- ---------------------------------------------------------------------
 
         RaidAssignments:UnregisterEvent("ADDON_LOADED")
 
@@ -590,7 +639,7 @@ elseif event == "CHAT_MSG_ADDON" then
     -- Only accept mark data from officers or the raid leader.
     -- This prevents any non-officer raid member (or a bad actor with a modified
     -- addon) from broadcasting and overwriting everyone's assignments.
-    -- RARequestMarks is exempt — anyone is allowed to ask for marks.
+    -- RARequestMarks is exempt -- anyone is allowed to ask for marks.
     local senderName = arg4
     local senderIsOfficer = false
     if senderName then
@@ -616,7 +665,7 @@ elseif event == "CHAT_MSG_ADDON" then
         isRACLabels or
         isRACTitle
     )
-    -- RARequestMarks does NOT require officer — anyone joining can ask
+    -- RARequestMarks does NOT require officer -- anyone joining can ask
     if requiresOfficer and not senderIsOfficer then
         return
     end
@@ -656,7 +705,7 @@ elseif event == "CHAT_MSG_ADDON" then
                 pos = nameEnd + 1
             end
             -- Receiving a sync from another officer means our tables are now populated.
-            -- Also cancel our own pending respond timer — someone else already answered.
+            -- Also cancel our own pending respond timer -- someone else already answered.
             RaidAssignments._marksPopulated = true
             RaidAssignments._respondTimer   = nil
             RaidAssignments:UpdateTanks()
@@ -848,7 +897,7 @@ elseif event == "CHAT_MSG_ADDON" then
 
 end
 
--- ── Shared custom button skin helper ─────────────────────────────────────────
+-- -- Shared custom button skin helper -----------------------------------------
 -- Creates a fully custom WoW-dark-fantasy styled button.
 -- Dark bg, gold border, amber text, hover glow. No Blizzard art required.
 function RaidAssignments:MakeBtn(parent, w, h, label, onClick)
@@ -982,7 +1031,7 @@ function RaidAssignments:ConfigMainFrame()
         this.drag = false
     end
 
-    -- Flat dark panel — modern/sharp look
+    -- Flat dark panel -- modern/sharp look
     local backdrop = {
         bgFile  = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -1003,8 +1052,10 @@ function RaidAssignments:ConfigMainFrame()
     self:SetBackdropBorderColor(0.15, 0.15, 0.18, 1)
 
     -- REMOVED ANIMATION: Simplified OnUpdate script
+    -- Timer logic is throttled to avoid running every single frame.
     self:SetScript("OnUpdate", function()
         local elapsed = arg1
+
         -- Deferred request: ask officers for marks shortly after joining a raid.
         if RaidAssignments._requestMarksTimer then
             RaidAssignments._requestMarksTimer = RaidAssignments._requestMarksTimer - elapsed
@@ -1017,8 +1068,6 @@ function RaidAssignments:ConfigMainFrame()
         end
 
         -- Deferred respond: answer a RARequestMarks after a staggered delay.
-        -- If _respondTimer is still set here it means nobody else answered yet
-        -- (receiving TankAssignmentsMarks clears it). Only fire if still populated.
         if RaidAssignments._respondTimer then
             RaidAssignments._respondTimer = RaidAssignments._respondTimer - elapsed
             if RaidAssignments._respondTimer <= 0 then
@@ -1066,7 +1115,7 @@ function RaidAssignments:ConfigMainFrame()
         RaidAssignments.HealToolTip:Hide()
     end)
 
-    -- ── Title bar (dark strip across top) ──────────────────────────────────
+    -- -- Title bar (dark strip across top) ----------------------------------
     local titleBar = self.bg:CreateTexture(nil, "BACKGROUND")
     titleBar:SetTexture("Interface\\Buttons\\WHITE8X8")
     titleBar:SetVertexColor(0.05, 0.05, 0.07, 1)
@@ -1090,8 +1139,8 @@ function RaidAssignments:ConfigMainFrame()
     accentLine:SetPoint("TOPLEFT",  self.bg, "TOPLEFT",  1, -37)
     accentLine:SetPoint("TOPRIGHT", self.bg, "TOPRIGHT", -1, -37)
 
-    -- ── Class filter icons ──────────────────────────────────────────────────
-    -- Compact row in the title bar, left side — custom skinned with dark bg + gold border
+    -- -- Class filter icons --------------------------------------------------
+    -- Compact row in the title bar, left side -- custom skinned with dark bg + gold border
     local CLASS_ICON_SIZE = 24
     local CLASS_ICON_GAP  = 4
     local classIconStartX = 8
@@ -1177,10 +1226,10 @@ function RaidAssignments:ConfigMainFrame()
         end
     end
 
-    -- ── Layout constants ────────────────────────────────────────────────────
-    -- Tank column: icons at x=14, slots extend right at 85px each (4 slots = 340px) → ends ~x=389
+    -- -- Layout constants ----------------------------------------------------
+    -- Tank column: icons at x=14, slots extend right at 85px each (4 slots = 340px) -> ends ~x=389
     -- Divider at x=400
-    -- Heal column: icons at x=410, slots extend right at 85px each (6 slots = 510px) → ends ~x=955
+    -- Heal column: icons at x=410, slots extend right at 85px each (6 slots = 510px) -> ends ~x=955
     local ICON_X_TANK  = 14
     local ICON_X_HEAL  = 410
     local ICON_SIZE    = 32
@@ -1224,8 +1273,8 @@ function RaidAssignments:ConfigMainFrame()
 
     local padding = ROW_PADDING
 
-    -- ── Tank / Curse mark icons (left column) ──────────────────────────────
-    -- Rows 1–8: standard raid icons (Skull at top = i=8 displayed first)
+    -- -- Tank / Curse mark icons (left column) ------------------------------
+    -- Rows 1-8: standard raid icons (Skull at top = i=8 displayed first)
     -- Empty slot ghost borders. Uses the same anchor as player frames:
     -- player frames do SetPoint("RIGHT", parentIcon, "RIGHT", 5 + (85*slot), 0)
     -- which positions the frame's RIGHT edge at parentIcon.RIGHT + 5 + 85*slot.
@@ -1262,7 +1311,7 @@ function RaidAssignments:ConfigMainFrame()
         local icon = CreateFrame("Frame", "T"..i, self.bg)
         icon:SetWidth(ICON_SIZE)
         icon:SetHeight(ICON_SIZE)
-        -- Row position: mark 8 → row 0 (top), mark 1 → row 7
+        -- Row position: mark 8 -> row 0 (top), mark 1 -> row 7
         local row = 8 - i
         icon:SetPoint("TOPLEFT", self.bg, "TOPLEFT", ICON_X_TANK, COL_TOP - (row * ROW_H))
         icon:SetFrameStrata("FULLSCREEN")
@@ -1276,7 +1325,7 @@ function RaidAssignments:ConfigMainFrame()
         MakeEmptySlots(icon, 4)  -- 4 tank slots per mark
     end
 
-    -- ── "CURSES" sub-header — mirrors MakeColumnHeader exactly ──────────────
+    -- -- "CURSES" sub-header -- mirrors MakeColumnHeader exactly --------------
     -- Bar top sits 8px below the last tank icon row
     local CURSE_BAR_Y = COL_TOP - (8 * ROW_H) - 8
 
@@ -1304,14 +1353,14 @@ function RaidAssignments:ConfigMainFrame()
     -- First curse icon 16px below the accent line (same gap as COL_TOP uses)
     local CURSE_OFFSET = CURSE_BAR_Y - 26 - 16
 
-    -- Rows 9–12: Warlock curse icons (4 rows below the CURSES header)
+    -- Rows 9-12: Warlock curse icons (4 rows below the CURSES header)
     -- Display reversed: index 12 at top, 9 at bottom
     for i = 12, 9, -1 do
         local data = RaidAssignments.WarlockMarks[i]
         local icon = CreateFrame("Frame", "T"..i, self.bg)
         icon:SetWidth(ICON_SIZE)
         icon:SetHeight(ICON_SIZE)
-        local curseRow = (12 - i)  -- 12→0, 11→1, 10→2, 9→3
+        local curseRow = (12 - i)  -- 12->0, 11->1, 10->2, 9->3
         icon:SetPoint("TOPLEFT", self.bg, "TOPLEFT", ICON_X_TANK, CURSE_OFFSET - (curseRow * ROW_H))
         icon:SetFrameStrata("FULLSCREEN")
         icon:EnableMouse(true)
@@ -1323,7 +1372,7 @@ function RaidAssignments:ConfigMainFrame()
         MakeEmptySlots(icon, 1)  -- 1 warlock slot per curse mark
     end
 
-    -- ── Healer mark icons (right column) ───────────────────────────────────
+    -- -- Healer mark icons (right column) -----------------------------------
     -- Rows 1-8: flat colored label pills
     -- Rows 9-12: directional icons from assets
     local directionIcons = {
@@ -1332,7 +1381,7 @@ function RaidAssignments:ConfigMainFrame()
         [11] = "Interface\\AddOns\\RaidAssignments\\assets\\Right.tga",
         [12] = "Interface\\AddOns\\RaidAssignments\\assets\\Left.tga",
     }
-    -- Display order top→bottom: 1,2,3,4,A,B,C,D then North,South,Left,Right
+    -- Display order top->bottom: 1,2,3,4,A,B,C,D then North,South,Left,Right
     -- HealRealMarks: [8]="1",[7]="2",[6]="3",[5]="4",[4]="A",[3]="B",[2]="C",[1]="D"
     -- Direction:     [10]=North, [9]=South, [12]=Left, [11]=Right
     local healDisplayOrder = {8, 7, 6, 5, 4, 3, 2, 1, 10, 9, 12, 11}
@@ -1368,7 +1417,7 @@ function RaidAssignments:ConfigMainFrame()
         MakeEmptySlots(icon, 6)  -- 6 healer slots per mark
     end
 
-    -- ── Mousewheel scaling on the main frame ─────────────────────────────────
+    -- -- Mousewheel scaling on the main frame ---------------------------------
     self.bg:EnableMouseWheel(true)
     self.bg:SetScript("OnMouseWheel", function()
         local delta = arg1
@@ -1383,7 +1432,7 @@ function RaidAssignments:ConfigMainFrame()
         RaidAssignments_Settings["UIScale"] = newScale
     end)
 
-    -- ── Confirm dialog helper ─────────────────────────────────────────────────
+    -- -- Confirm dialog helper -------------------------------------------------
     local function ShowConfirmDialog(msg, onConfirm)
         local d = CreateFrame("Frame", nil, UIParent)
         d:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -1431,7 +1480,7 @@ function RaidAssignments:ConfigMainFrame()
         d:Show()
     end
 
-    -- ── Close / Your Mark / Reset / Reset All (title bar area) ──────
+    -- -- Close / Your Mark / Reset / Reset All (title bar area) ------
     self.CloseButton = RaidAssignments:MakeBtn(self.bg, 22, 22, "X", function()
         PlaySound("igMainMenuOptionCheckBoxOn")
         RaidAssignments.ToolTip:Hide()
@@ -1598,11 +1647,11 @@ function RaidAssignments:ConfigMainFrame()
     end)
     self.masterResetButton:SetPoint("RIGHT", self.resetAllButton, "LEFT", -6, 0)
 
-    -- ── Bottom button layout ────────────────────────────────────────────────
+    -- -- Bottom button layout ------------------------------------------------
     -- Row 1 (y=46, centered): Post Tanks | Post Healers | Post Curses | Post All | General
-    -- Row 2 (y=14, centered): C1–C8 | KT | 4H | C'Thun
-    -- Frame width = 960. Row1: 5×160px + 4×8px = 832px → x_start = (960-832)/2 = 64
-    -- Row2: 11×76px + 10×8px = 836+80 = 916px → x_start = (960-916)/2 = 22
+    -- Row 2 (y=14, centered): C1-C8 | KT | 4H | C'Thun
+    -- Frame width = 960. Row1: 5x160px + 4x8px = 832px -> x_start = (960-832)/2 = 64
+    -- Row2: 11x76px + 10x8px = 836+80 = 916px -> x_start = (960-916)/2 = 22
 
     local ROW1_W    = 160
     local ROW1_GAP  = 8
@@ -1616,7 +1665,7 @@ function RaidAssignments:ConfigMainFrame()
     local ROW2_X    = math.floor((960 - ROW2_TOTAL) / 2)  -- 22
     local ROW2_Y    = 14
 
-    -- Row 1 buttons — Post buttons get a cyan tint to visually distinguish them
+    -- Row 1 buttons -- Post buttons get a cyan tint to visually distinguish them
     local function TintCyan(btn)
         for _, ln in ipairs(btn.borderLines) do ln:SetVertexColor(0.15, 0.65, 0.80, 1) end
         btn.label:SetTextColor(0.40, 0.85, 0.95, 1)
@@ -1707,6 +1756,7 @@ function RaidAssignments:ConfigMainFrame()
             RaidAssignments.CthunFrame.close = CreateFrame("Button", nil, RaidAssignments.CthunFrame, "UIPanelCloseButton")
             RaidAssignments.CthunFrame.close:SetPoint("TOPRIGHT", RaidAssignments.CthunFrame, "TOPRIGHT")
             RaidAssignments.CthunFrame.close:SetScript("OnClick", function() RaidAssignments.CthunFrame:Hide() end)
+            RaidAssignments.CthunFrame:Hide()
         end
         if RaidAssignments.CthunFrame:IsShown() then RaidAssignments.CthunFrame:Hide()
         else RaidAssignments.CthunFrame:Show() end
@@ -1732,6 +1782,7 @@ function RaidAssignments:ConfigMainFrame()
             RaidAssignments.FourHFrame.close = CreateFrame("Button", nil, RaidAssignments.FourHFrame, "UIPanelCloseButton")
             RaidAssignments.FourHFrame.close:SetPoint("TOPRIGHT", RaidAssignments.FourHFrame, "TOPRIGHT")
             RaidAssignments.FourHFrame.close:SetScript("OnClick", function() RaidAssignments.FourHFrame:Hide() end)
+            RaidAssignments.FourHFrame:Hide()
         end
         if RaidAssignments.FourHFrame:IsShown() then RaidAssignments.FourHFrame:Hide()
         else RaidAssignments.FourHFrame:Show() end
@@ -1757,6 +1808,7 @@ function RaidAssignments:ConfigMainFrame()
             RaidAssignments.KTFrame.close = CreateFrame("Button", nil, RaidAssignments.KTFrame, "UIPanelCloseButton")
             RaidAssignments.KTFrame.close:SetPoint("TOPRIGHT", RaidAssignments.KTFrame, "TOPRIGHT")
             RaidAssignments.KTFrame.close:SetScript("OnClick", function() RaidAssignments.KTFrame:Hide() end)
+            RaidAssignments.KTFrame:Hide()
         end
         if RaidAssignments.KTFrame:IsShown() then RaidAssignments.KTFrame:Hide()
         else RaidAssignments.KTFrame:Show() end
@@ -1810,6 +1862,9 @@ function RaidAssignments:ConfigMainFrame()
     RaidAssignments.Settings["SizeX"] = 0
     RaidAssignments.Settings["SizeY"] = 0
     self:CreateCustomAssignmentButtons()
+
+    -- Compositions panel toggle button (defined in RaidCompositions.lua)
+    RaidAssignments:CreateCompositionsButton()
 end
 
 function RaidAssignments:ConfigGeneralFrame()
@@ -2183,8 +2238,8 @@ function RaidAssignments:UpdateGeneral()
                     end
                     local frame = RaidAssignments.GeneralFrames[i][v]
                     frame:SetPoint("RIGHT", 5 + (85 * slot), 0)
-                    frame.texture:SetWidth(frame:GetWidth() - 4)
-                    frame.texture:SetVertexColor(RaidAssignments:GetClassColors(v, "rgb"))
+                    local r, g, b = RaidAssignments:GetClassColors(v, "rgb")
+                    RA_ApplyFrameColor(frame, r, g, b)
                     frame:Show()
                 end
             end
@@ -2234,7 +2289,7 @@ function RaidAssignments:WhisperAssignments()
         end
     end
     for i = 1, 12 do
-        for k = 1, 4 do
+        for k = 1, 6 do
             local v = RaidAssignments.HealMarks[i][k]
             if v and RaidAssignments:IsInRaid(v) then
                 local text = "You are assigned to heal " .. RaidAssignments.HealRealMarks[i] .. " (slot " .. k .. ")"
@@ -2400,31 +2455,14 @@ function RaidAssignments:IsInRaid(name)
     return RaidAssignments._rosterSet[name] == true
 end
 
--- Restrict Curse Marks (9–12) to Warlocks only
+-- Restrict Curse Marks (9-12) to Warlocks only
 function RaidAssignments:CanAssignToMark(mark, playerName)
     if mark >= 9 and mark <= 12 then
-        -- Determine player's class
-        local playerClass
-        if RaidAssignments.TestMode then
-            for _, unit in ipairs(RaidAssignments.TestRoster) do
-                if unit.name == playerName then
-                    playerClass = unit.class
-                    break
-                end
-            end
-        else
-            for i = 1, GetNumRaidMembers() do
-                if UnitName("raid"..i) == playerName then
-                    playerClass = UnitClass("raid"..i)
-                    break
-                end
-            end
-            if not playerClass and UnitName("player") == playerName then
-                playerClass = UnitClass("player")
-            end
+        -- Use roster cache for O(1) class lookup
+        local playerClass = GetCachedClass(playerName)
+        if not playerClass and playerName == UnitName("player") then
+            playerClass = UnitClass("player")
         end
-
-        -- Restrict to Warlock
         if playerClass ~= "Warlock" then
             return false
         end
@@ -2494,7 +2532,7 @@ function RaidAssignments:UpdateTanks()
                     if not RaidAssignments._missingPlayers[key] then
                         RaidAssignments._missingPlayers[key] = GetTime()
                     elseif (GetTime() - RaidAssignments._missingPlayers[key]) >= 5 then
-                        -- They've been gone for 5+ seconds — safe to remove
+                        -- They've been gone for 5+ seconds -- safe to remove
                         RaidAssignments._missingPlayers[key] = nil
                         RaidAssignments.Marks[i][k] = nil
                         if RaidAssignments.Frames[i][v] then
@@ -2503,7 +2541,7 @@ function RaidAssignments:UpdateTanks()
                         end
                     end
                 else
-                    -- Player is in raid — clear any pending removal timer for this slot
+                    -- Player is in raid -- clear any pending removal timer for this slot
                     if RaidAssignments._missingPlayers then
                         RaidAssignments._missingPlayers[i .. "_" .. k] = nil
                     end
@@ -2517,8 +2555,8 @@ function RaidAssignments:UpdateTanks()
                     RaidAssignments.Frames[i][v] = RaidAssignments.Frames[i][v] or RaidAssignments:AddTankFrame(v,i)
                     local frame = RaidAssignments.Frames[i][v]
                     frame:SetPoint("RIGHT", 5 + (85 * slot), 0)
-                    frame.texture:SetWidth(frame:GetWidth() - 4)
-                    frame.texture:SetVertexColor(RaidAssignments:GetClassColors(v, "rgb"))
+                    local r, g, b = RaidAssignments:GetClassColors(v, "rgb")
+                    RA_ApplyFrameColor(frame, r, g, b)
                     frame:Show()
                 end
             end
@@ -2578,14 +2616,14 @@ function RaidAssignments:UpdateHeals()
 
         -- Show healers (all 6 slots)
         for i=1,12 do
-            for k=1,6 do  -- Changed from 4 to 6
+            for k=1,6 do
                 local name = RaidAssignments.HealMarks[i][k]
                 if name then
                     RaidAssignments.HealFrames[i][name] = RaidAssignments.HealFrames[i][name] or RaidAssignments:AddHealFrame(name, i)
                     local frame = RaidAssignments.HealFrames[i][name]
                     frame:SetPoint("RIGHT", 5 + (85 * k), 0)
-                    frame.texture:SetWidth(frame:GetWidth() - 4)
-                    frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                    local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+                    RA_ApplyFrameColor(frame, r, g, b)
                     frame:Show()
                 end
             end
@@ -2833,7 +2871,8 @@ function RaidAssignments:OpenToolTip(frameName)
                 RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
                 local frame = RaidAssignments.Frames["ToolTip"][name]
                 frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
-                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+                RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
             end
         end
@@ -2971,7 +3010,8 @@ function RaidAssignments:OpenHealToolTip(frameName)
                 RaidAssignments.Frames["HealToolTip"][name] = RaidAssignments.Frames["HealToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.HealToolTip)
                 local frame = RaidAssignments.Frames["HealToolTip"][name]
                 frame:SetPoint("TOPLEFT", RaidAssignments.HealToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
-                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+                RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
             end
         end
@@ -2996,7 +3036,7 @@ function RaidAssignments:AddTank(name, mark)
         if RaidAssignments.Marks[i] then
             for k, v in pairs(RaidAssignments.Marks[i]) do
                 if v == name then
-                    -- If clicking the same mark they're already on → remove (toggle)
+                    -- If clicking the same mark they're already on -> remove (toggle)
                     if i == mark then
                         for slot, assignedName in pairs(RaidAssignments.Marks[mark]) do
                             if assignedName == name then
@@ -3011,7 +3051,7 @@ function RaidAssignments:AddTank(name, mark)
                             end
                         end
                     end
-                    -- Already assigned somewhere else in this category → block
+                    -- Already assigned somewhere else in this category -> block
                     return
                 end
             end
@@ -3051,12 +3091,13 @@ function RaidAssignments:AddTank(name, mark)
     RaidAssignments.Frames[mark][name] = RaidAssignments.Frames[mark][name] or RaidAssignments:AddTankFrame(name, mark)
     local frame = RaidAssignments.Frames[mark][name]
     frame:SetPoint("RIGHT", 5 + (85 * index), 0)
-    frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+    local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+    RA_ApplyFrameColor(frame, r, g, b)
     frame:Show()
 
     if RaidAssignments:CanAssignToMark(mark, name) then
         RaidAssignments.Marks[mark][index] = name
-        -- A manual assignment means our table is now authoritative — safe to broadcast.
+        -- A manual assignment means our table is now authoritative -- safe to broadcast.
         RaidAssignments._marksPopulated = true
         RaidAssignments:SendTanks()
     end
@@ -3085,7 +3126,8 @@ function RaidAssignments:AddHeal(name, mark)
         RaidAssignments.HealFrames[mark][name] = RaidAssignments.HealFrames[mark][name] or RaidAssignments:AddHealFrame(name, mark)
         local frame = RaidAssignments.HealFrames[mark][name]
         frame:SetPoint("RIGHT", 5 + (85 * slot), 0)
-        frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+        local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+        RA_ApplyFrameColor(frame, r, g, b)
         frame:Show()
         RaidAssignments.HealMarks[mark][slot] = name
         RaidAssignments._marksPopulated = true
@@ -3126,230 +3168,301 @@ function RaidAssignments:AddGeneral(name, mark)
         RaidAssignments.GeneralFrames[mark][name] = RaidAssignments.GeneralFrames[mark][name] or RaidAssignments:AddGeneralFrame(name, mark)
         local frame = RaidAssignments.GeneralFrames[mark][name]
         frame:SetPoint("RIGHT", 5 + (85 * slot), 0)
-        frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+        local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+        RA_ApplyFrameColor(frame, r, g, b)
         frame:Show()
         RaidAssignments.GeneralMarks[mark][slot] = name
         RaidAssignments._marksPopulated = true
-
-        -- Send updates
         RaidAssignments:SendGeneral()
     end
 end
 
 function RaidAssignments:AddToolTipFrame(name, tooltip)
     local frame = CreateFrame("Button", name, tooltip)
-    local backdrop = {
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-        tile = false,
-        tileSize = 8,
-        edgeSize = 4,
-        insets = { left = 2, right = 2, top = 0, bottom = 0 }
-    }
-
     frame:SetWidth(80)
     frame:SetHeight(25)
-    frame:SetBackdrop(backdrop)
-    frame:SetBackdropColor(0, 0, 0, 0)
+    frame:EnableMouse(true)
 
-    frame.texture = frame:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)  -- This will automatically adjust to 76
-    frame.texture:SetHeight(24)
-    frame.texture:SetPoint("TOPLEFT", 2, -1)
-    frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
-    frame.texture:SetGradientAlpha("VERTICAL", 1, 1, 1, 0, 1, 1, 1, 1)
+    -- Black background
+    local bg = frame:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetVertexColor(0.04, 0.04, 0.04, 0.96)
+    bg:SetAllPoints(frame)
+    frame.bg = bg
 
+    -- Class-coloured border lines (set at assignment time via SetVertexColor)
+    local function MkLine()
+        local t = frame:CreateTexture(nil, "BORDER")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        return t
+    end
+    local bT = MkLine(); local bB = MkLine(); local bL = MkLine(); local bR = MkLine()
+    bT:SetHeight(1); bT:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bT:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0)
+    bB:SetHeight(1); bB:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0);   bB:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    bL:SetWidth(1);  bL:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bL:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0)
+    bR:SetWidth(1);  bR:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0);       bR:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    frame.borderLines = {bT, bB, bL, bR}
+
+    -- Subtle inner colour fill (tinted, semi-transparent)
+    local fill = frame:CreateTexture(nil, "ARTWORK")
+    fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+    fill:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, -1)
+    fill:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    frame.fill = fill
+
+    -- Hover glow
+    local glow = frame:CreateTexture(nil, "OVERLAY")
+    glow:SetTexture("Interface\\Buttons\\WHITE8X8")
+    glow:SetAllPoints(frame)
+    glow:Hide()
+    frame.glow = glow
+
+    -- Player name (centred, white, shadow)
     frame.name = frame:CreateFontString(nil, "OVERLAY")
-    frame.name:SetPoint("CENTER", 0, 0)
-    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 12)
+    frame.name:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 11)
     frame.name:SetTextColor(1, 1, 1, 1)
     frame.name:SetShadowOffset(1, -1)
+    frame.name:SetShadowColor(0, 0, 0, 1)
     frame.name:SetText(name)
 
-    -- In the AddToolTipFrame function, update the OnClick script:
-	frame:SetScript("OnClick", function()
-		if IsRaidOfficer() then
-			this:Hide()
-			if tooltip == RaidAssignments.ToolTip then
-				RaidAssignments:AddTank(this:GetName(), RaidAssignments.Settings["active"])
-				RaidAssignments:OpenToolTip("T"..RaidAssignments.Settings["active"])
-				RaidAssignments:SendTanks()
-			elseif tooltip == RaidAssignments.HealToolTip then
-				RaidAssignments:AddHeal(this:GetName(), RaidAssignments.Settings["active_heal"])
-				RaidAssignments:OpenHealToolTip("H"..RaidAssignments.Settings["active_heal"])
-				RaidAssignments:SendHeals()
-			elseif tooltip == RaidAssignments.GeneralToolTip then
-				RaidAssignments:AddGeneral(this:GetName(), RaidAssignments.Settings["active_general"])
-				RaidAssignments:OpenGeneralToolTip("G"..RaidAssignments.Settings["active_general"])
-				RaidAssignments:SendGeneral()
-			end
-		end
-	end)
-    frame:SetScript("OnEnter", function() end)
-    frame:SetScript("OnLeave", function() end)
+    -- texture alias kept for callers that do frame.texture:SetVertexColor(...)
+    -- We drive colour through SetVertexColor on the border and fill instead.
+    frame.texture = fill
+
+    frame:SetScript("OnEnter", function()
+        frame.glow:Show()
+        frame.glow:SetVertexColor(1, 1, 1, 0.08)
+    end)
+    frame:SetScript("OnLeave", function()
+        frame.glow:Hide()
+    end)
+
+    -- OnClick is set by the caller (AddToolTipFrame is reused for tank/heal/general tooltips)
+    frame:SetScript("OnClick", function()
+        if IsRaidOfficer() then
+            this:Hide()
+            if tooltip == RaidAssignments.ToolTip then
+                RaidAssignments:AddTank(this:GetName(), RaidAssignments.Settings["active"])
+                RaidAssignments:OpenToolTip("T"..RaidAssignments.Settings["active"])
+                RaidAssignments:SendTanks()
+            elseif tooltip == RaidAssignments.HealToolTip then
+                RaidAssignments:AddHeal(this:GetName(), RaidAssignments.Settings["active_heal"])
+                RaidAssignments:OpenHealToolTip("H"..RaidAssignments.Settings["active_heal"])
+                RaidAssignments:SendHeals()
+            elseif tooltip == RaidAssignments.GeneralToolTip then
+                RaidAssignments:AddGeneral(this:GetName(), RaidAssignments.Settings["active_general"])
+                RaidAssignments:OpenGeneralToolTip("G"..RaidAssignments.Settings["active_general"])
+                RaidAssignments:SendGeneral()
+            end
+        end
+    end)
     return frame
 end
 
+
+
 function RaidAssignments:AddTankFrame(name, mark)
     local frame = CreateFrame("Button", mark..name, RaidAssignments.bg)
-    local backdrop = {
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-        tile = false,
-        tileSize = 8,
-        edgeSize = 4,
-        insets = { left = 2, right = 2, top = 0, bottom = 0 }
-    }
     frame:SetParent("T"..mark)
     frame:SetWidth(80)
     frame:SetHeight(25)
-    frame:SetBackdrop(backdrop)
-    frame:SetBackdropColor(0, 0, 0, 0)
+    frame:EnableMouse(true)
 
-    -- hpbar without portrait gap
-    frame.hpbar = CreateFrame("Button", nil, frame)
-    frame.hpbar:SetWidth(frame:GetWidth() - 4)
-    frame.hpbar:SetHeight(24)
-    frame.hpbar:SetPoint("TOPLEFT", 2, -1)
-    frame.hpbar:SetFrameLevel(1)
+    -- Black background
+    local bg = frame:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetVertexColor(0.04, 0.04, 0.04, 0.96)
+    bg:SetAllPoints(frame)
+    frame.bg = bg
 
-    frame.texture = frame.hpbar:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
-    frame.texture:SetHeight(24)
-    frame.texture:SetPoint("TOPLEFT", 0, 0)
-    frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
-    frame.texture:SetGradientAlpha("VERTICAL", 1, 1, 1, 0, 1, 1, 1, 1)
+    -- Class-coloured border lines
+    local function MkLine()
+        local t = frame:CreateTexture(nil, "BORDER")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        return t
+    end
+    local bT = MkLine(); local bB = MkLine(); local bL = MkLine(); local bR = MkLine()
+    bT:SetHeight(1); bT:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bT:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0)
+    bB:SetHeight(1); bB:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0);   bB:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    bL:SetWidth(1);  bL:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bL:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0)
+    bR:SetWidth(1);  bR:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0);       bR:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    frame.borderLines = {bT, bB, bL, bR}
 
-    frame.name = frame.hpbar:CreateFontString(nil, "OVERLAY")
-    frame.name:SetPoint("CENTER", 0, 0)
-    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 12)
+    -- Subtle inner colour fill
+    local fill = frame:CreateTexture(nil, "ARTWORK")
+    fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+    fill:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, -1)
+    fill:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    frame.fill = fill
+    frame.texture = fill  -- alias for legacy callers
+
+    -- Hover glow
+    local glow = frame:CreateTexture(nil, "OVERLAY")
+    glow:SetTexture("Interface\\Buttons\\WHITE8X8")
+    glow:SetAllPoints(frame)
+    glow:Hide()
+    frame.glow = glow
+
+    -- Player name
+    frame.name = frame:CreateFontString(nil, "OVERLAY")
+    frame.name:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 11)
     frame.name:SetTextColor(1, 1, 1, 1)
     frame.name:SetShadowOffset(1, -1)
+    frame.name:SetShadowColor(0, 0, 0, 1)
     frame.name:SetText(name)
 
-	frame:SetScript("OnClick", function()
-		if IsRaidOfficer() then
-			-- Remove from tank assignments
-			for k, v in pairs(RaidAssignments.Marks[mark]) do
-				if v == name then
-					RaidAssignments.Marks[mark][k] = nil
-					this:Hide()
-					RaidAssignments.Frames[mark][name] = nil
-					RaidAssignments:UpdateTanks()
-					RaidAssignments:SendTanks()
-					break
-				end
-			end
-		end
-	end)
-    frame:SetScript("OnEnter", function() end)
-    frame:SetScript("OnLeave", function() end)
+    frame:SetScript("OnEnter", function() frame.glow:Show() end)
+    frame:SetScript("OnLeave", function() frame.glow:Hide() end)
+    frame:SetScript("OnClick", function()
+        if IsRaidOfficer() then
+            for k, v in pairs(RaidAssignments.Marks[mark]) do
+                if v == name then
+                    RaidAssignments.Marks[mark][k] = nil
+                    this:Hide()
+                    RaidAssignments.Frames[mark][name] = nil
+                    RaidAssignments:UpdateTanks()
+                    RaidAssignments:SendTanks()
+                    break
+                end
+            end
+        end
+    end)
     return frame
 end
 
 function RaidAssignments:AddHealFrame(name, mark)
     local frame = CreateFrame("Button", "H"..mark..name, RaidAssignments.bg)
-    local backdrop = {
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-        tile = false,
-        tileSize = 8,
-        edgeSize = 4,
-        insets = { left = 2, right = 2, top = 0, bottom = 0 }
-    }
     frame:SetParent("H"..mark)
     frame:SetWidth(80)
     frame:SetHeight(25)
-    frame:SetBackdrop(backdrop)
-    frame:SetBackdropColor(0, 0, 0, 0)
+    frame:EnableMouse(true)
 
-    frame.hpbar = CreateFrame("Button", nil, frame)
-    frame.hpbar:SetWidth(frame:GetWidth() - 4)
-    frame.hpbar:SetHeight(24)
-    frame.hpbar:SetPoint("TOPLEFT", 2, -1)
-    frame.hpbar:SetFrameLevel(1)
+    -- Black background
+    local bg = frame:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetVertexColor(0.04, 0.04, 0.04, 0.96)
+    bg:SetAllPoints(frame)
+    frame.bg = bg
 
-    frame.texture = frame.hpbar:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
-    frame.texture:SetHeight(24)
-    frame.texture:SetPoint("TOPLEFT", 0, 0)
-    frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
-    frame.texture:SetGradientAlpha("VERTICAL", 1, 1, 1, 0, 1, 1, 1, 1)
+    -- Class-coloured border lines
+    local function MkLine()
+        local t = frame:CreateTexture(nil, "BORDER")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        return t
+    end
+    local bT = MkLine(); local bB = MkLine(); local bL = MkLine(); local bR = MkLine()
+    bT:SetHeight(1); bT:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bT:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0)
+    bB:SetHeight(1); bB:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0);   bB:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    bL:SetWidth(1);  bL:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bL:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0)
+    bR:SetWidth(1);  bR:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0);       bR:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    frame.borderLines = {bT, bB, bL, bR}
 
-    frame.name = frame.hpbar:CreateFontString(nil, "OVERLAY")
-    frame.name:SetPoint("CENTER", 0, 0)
-    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 12)
+    -- Subtle inner colour fill
+    local fill = frame:CreateTexture(nil, "ARTWORK")
+    fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+    fill:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, -1)
+    fill:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    frame.fill = fill
+    frame.texture = fill  -- alias for legacy callers
+
+    -- Hover glow
+    local glow = frame:CreateTexture(nil, "OVERLAY")
+    glow:SetTexture("Interface\\Buttons\\WHITE8X8")
+    glow:SetAllPoints(frame)
+    glow:Hide()
+    frame.glow = glow
+
+    -- Player name
+    frame.name = frame:CreateFontString(nil, "OVERLAY")
+    frame.name:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 11)
     frame.name:SetTextColor(1, 1, 1, 1)
     frame.name:SetShadowOffset(1, -1)
+    frame.name:SetShadowColor(0, 0, 0, 1)
     frame.name:SetText(name)
 
-	frame:SetScript("OnClick", function()
-		if IsRaidOfficer() then
-			for k = 1, 6 do  -- Changed from 4 to 6
-				if RaidAssignments.HealMarks[mark][k] == name then
-					RaidAssignments.HealMarks[mark][k] = nil
-					this:Hide()
-					RaidAssignments.HealFrames[mark][name] = nil -- clear cached frame
-					RaidAssignments:UpdateHeals()
-					RaidAssignments:SendHeals()  -- Make sure to send updates
-					break
-				end
-			end
-		end
-	end)
-
-    frame:SetScript("OnEnter", function() end)
-    frame:SetScript("OnLeave", function() end)
+    frame:SetScript("OnEnter", function() frame.glow:Show() end)
+    frame:SetScript("OnLeave", function() frame.glow:Hide() end)
+    frame:SetScript("OnClick", function()
+        if IsRaidOfficer() then
+            for k = 1, 6 do
+                if RaidAssignments.HealMarks[mark][k] == name then
+                    RaidAssignments.HealMarks[mark][k] = nil
+                    this:Hide()
+                    RaidAssignments.HealFrames[mark][name] = nil
+                    RaidAssignments:UpdateHeals()
+                    RaidAssignments:SendHeals()
+                    break
+                end
+            end
+        end
+    end)
     return frame
 end
 
 function RaidAssignments:AddGeneralFrame(name, mark)
     local frame = CreateFrame("Button", mark..name, RaidAssignments.generalBg)
-    local backdrop = {
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-        tile = false,
-        tileSize = 8,
-        edgeSize = 4,
-        insets = { left = 2, right = 2, top = 0, bottom = 0 }
-    }
     frame:SetParent("G"..mark)
     frame:SetWidth(80)
     frame:SetHeight(25)
-    frame:SetBackdrop(backdrop)
-    frame:SetBackdropColor(0, 0, 0, 0)
+    frame:EnableMouse(true)
 
-    -- hpbar without portrait gap
-    frame.hpbar = CreateFrame("Button", nil, frame)
-    frame.hpbar:SetWidth(frame:GetWidth() - 4)
-    frame.hpbar:SetHeight(24)
-    frame.hpbar:SetPoint("TOPLEFT", 2, -1)
-    frame.hpbar:SetFrameLevel(1)
+    -- Black background
+    local bg = frame:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetVertexColor(0.04, 0.04, 0.04, 0.96)
+    bg:SetAllPoints(frame)
+    frame.bg = bg
 
-    frame.texture = frame.hpbar:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
-    frame.texture:SetHeight(24)
-    frame.texture:SetPoint("TOPLEFT", 0, 0)
-    frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
-    frame.texture:SetGradientAlpha("VERTICAL", 1, 1, 1, 0, 1, 1, 1, 1)
+    -- Class-coloured border lines
+    local function MkLine()
+        local t = frame:CreateTexture(nil, "BORDER")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        return t
+    end
+    local bT = MkLine(); local bB = MkLine(); local bL = MkLine(); local bR = MkLine()
+    bT:SetHeight(1); bT:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bT:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0)
+    bB:SetHeight(1); bB:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0);   bB:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    bL:SetWidth(1);  bL:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bL:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0)
+    bR:SetWidth(1);  bR:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0);       bR:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    frame.borderLines = {bT, bB, bL, bR}
 
-    frame.name = frame.hpbar:CreateFontString(nil, "OVERLAY")
-    frame.name:SetPoint("CENTER", 0, 0)
-    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 12)
+    -- Subtle inner colour fill
+    local fill = frame:CreateTexture(nil, "ARTWORK")
+    fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+    fill:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, -1)
+    fill:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    frame.fill = fill
+    frame.texture = fill  -- alias for legacy callers
+
+    -- Hover glow
+    local glow = frame:CreateTexture(nil, "OVERLAY")
+    glow:SetTexture("Interface\\Buttons\\WHITE8X8")
+    glow:SetAllPoints(frame)
+    glow:Hide()
+    frame.glow = glow
+
+    -- Player name
+    frame.name = frame:CreateFontString(nil, "OVERLAY")
+    frame.name:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 11)
     frame.name:SetTextColor(1, 1, 1, 1)
     frame.name:SetShadowOffset(1, -1)
+    frame.name:SetShadowColor(0, 0, 0, 1)
     frame.name:SetText(name)
 
-    -- FIXED: Correct OnClick script to remove players from general assignments
+    frame:SetScript("OnEnter", function() frame.glow:Show() end)
+    frame:SetScript("OnLeave", function() frame.glow:Hide() end)
     frame:SetScript("OnClick", function()
         if IsRaidOfficer() then
-            -- Remove from general assignments
-            local maxSlots = (mark >= 9 and mark <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
+            local maxSlots = (mark >= 9 and mark <= 10) and 7 or 5
             for k = 1, maxSlots do
                 if RaidAssignments.GeneralMarks[mark] and RaidAssignments.GeneralMarks[mark][k] == name then
                     RaidAssignments.GeneralMarks[mark][k] = nil
                     this:Hide()
-                    RaidAssignments.GeneralFrames[mark][name] = nil -- clear cached frame
+                    RaidAssignments.GeneralFrames[mark][name] = nil
                     RaidAssignments:UpdateGeneral()
                     RaidAssignments:SendGeneral()
                     break
@@ -3357,9 +3470,6 @@ function RaidAssignments:AddGeneralFrame(name, mark)
             end
         end
     end)
-
-    frame:SetScript("OnEnter", function() end)
-    frame:SetScript("OnLeave", function() end)
     return frame
 end
 
@@ -3374,7 +3484,7 @@ function RaidAssignments:PostAssignments()
             for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
-            SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments:GetClassColors(RaidAssignments.RealMarks[i], "mark")
@@ -3391,7 +3501,7 @@ function RaidAssignments:PostAssignments()
                         end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3404,7 +3514,7 @@ function RaidAssignments:PostAssignments()
             if n then break end
         end
         if n then
-            SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Curse Assignments --", chan, nil, chanNum)
             for i = 9, 12 do
                 local hasAny = false
                 for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
@@ -3417,7 +3527,7 @@ function RaidAssignments:PostAssignments()
                         else text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff") end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
             end
         end
@@ -3425,7 +3535,7 @@ function RaidAssignments:PostAssignments()
         -- Heals
         n = false
         for i = 1, 12 do
-            for k = 1, 4 do
+            for k = 1, 6 do
                 if RaidAssignments.HealMarks[i][k] then
                     n = true
                     break
@@ -3433,12 +3543,12 @@ function RaidAssignments:PostAssignments()
             end
         end
         if n then
-            SendChatMessage("-- Heal Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Heal Assignments --", chan, nil, chanNum)
             local i = 12
             while i > 0 do
                 local text = RaidAssignments.HealRealMarks[i]
                 local hasHealers = false
-                for k = 1, 4 do
+                for k = 1, 6 do
                     if RaidAssignments.HealMarks[i][k] then
                         hasHealers = true
                         break
@@ -3446,12 +3556,12 @@ function RaidAssignments:PostAssignments()
                 end
                 if hasHealers then
                     text = text .. ": "
-                    for k = 1, 4 do
+                    for k = 1, 6 do
                         local v = RaidAssignments.HealMarks[i][k]
                         if v then
                             text = text .. "(" .. k .. ") " .. RaidAssignments:GetClassColors(v, "cff")
                             local hasMore = false
-                            for m = k + 1, 4 do
+                            for m = k + 1, 6 do
                                 if RaidAssignments.HealMarks[i][m] then
                                     hasMore = true
                                     break
@@ -3464,7 +3574,7 @@ function RaidAssignments:PostAssignments()
                             end
                         end
                     end
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3476,7 +3586,7 @@ function RaidAssignments:PostAssignments()
             for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
-            SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments.RealMarks[i]
@@ -3493,7 +3603,7 @@ function RaidAssignments:PostAssignments()
                         end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3506,7 +3616,7 @@ function RaidAssignments:PostAssignments()
             if n then break end
         end
         if n then
-            SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Curse Assignments --", chan, nil, chanNum)
             for i = 9, 12 do
                 local hasAny = false
                 for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
@@ -3519,7 +3629,7 @@ function RaidAssignments:PostAssignments()
                         else text = text .. ", " .. v end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
             end
         end
@@ -3527,7 +3637,7 @@ function RaidAssignments:PostAssignments()
         -- Heals
         n = false
         for i = 1, 12 do
-            for k = 1, 4 do
+            for k = 1, 6 do
                 if RaidAssignments.HealMarks[i][k] then
                     n = true
                     break
@@ -3535,12 +3645,12 @@ function RaidAssignments:PostAssignments()
             end
         end
         if n then
-            SendChatMessage("-- Heal Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Heal Assignments --", chan, nil, chanNum)
             local i = 12
             while i > 0 do
                 local text = RaidAssignments.HealRealMarks[i]
                 local hasHealers = false
-                for k = 1, 4 do
+                for k = 1, 6 do
                     if RaidAssignments.HealMarks[i][k] then
                         hasHealers = true
                         break
@@ -3548,12 +3658,12 @@ function RaidAssignments:PostAssignments()
                 end
                 if hasHealers then
                     text = text .. ": "
-                    for k = 1, 4 do
+                    for k = 1, 6 do
                         local v = RaidAssignments.HealMarks[i][k]
                         if v then
                             text = text .. "(" .. k .. ") " .. v
                             local hasMore = false
-                            for m = k + 1, 4 do
+                            for m = k + 1, 6 do
                                 if RaidAssignments.HealMarks[i][m] then
                                     hasMore = true
                                     break
@@ -3566,7 +3676,7 @@ function RaidAssignments:PostAssignments()
                             end
                         end
                     end
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3610,10 +3720,15 @@ function RaidAssignments:ToggleTestMode()
     if not RaidAssignments.TestMode then
         RaidAssignments.TestMode = true
         RaidAssignments:GenerateTestRoster()
+        -- Populate the roster cache from the test roster so GetCachedClass(),
+        -- IsInRaid(), and GetClassColors() all work correctly in test mode.
+        RaidAssignments:RebuildRosterCache()
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Test mode enabled with 40 dummy players")
     else
         RaidAssignments.TestMode = false
         RaidAssignments.TestRoster = {}
+        -- Clear the cache so stale test names don't linger after disabling.
+        RaidAssignments:RebuildRosterCache()
         DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Test mode disabled")
     end
     RaidAssignments:UpdateTanks()
@@ -3668,7 +3783,7 @@ function RaidAssignments:PostRaidAssignments()
             for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
-            SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments:GetClassColors(RaidAssignments.RealMarks[i], "mark")
@@ -3685,7 +3800,7 @@ function RaidAssignments:PostRaidAssignments()
                         end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3696,7 +3811,7 @@ function RaidAssignments:PostRaidAssignments()
             for _ in pairs(RaidAssignments.Marks[i]) do n = true; break end
         end
         if n then
-            SendChatMessage("-- Tank Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Tank Assignments --", chan, nil, chanNum)
             local i = 8
             while i > 0 do
                 local text = RaidAssignments.RealMarks[i]
@@ -3713,7 +3828,7 @@ function RaidAssignments:PostRaidAssignments()
                         end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3748,7 +3863,7 @@ function RaidAssignments:PostHealAssignments()
             end
         end
         if n then
-            SendChatMessage("-- Heal Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Heal Assignments --", chan, nil, chanNum)
             local i = 12
             while i > 0 do
                 local text = RaidAssignments.HealRealMarks[i]
@@ -3779,7 +3894,7 @@ function RaidAssignments:PostHealAssignments()
                             end
                         end
                     end
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3795,7 +3910,7 @@ function RaidAssignments:PostHealAssignments()
             end
         end
         if n then
-            SendChatMessage("-- Heal Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- Heal Assignments --", chan, nil, chanNum)
             local i = 12
             while i > 0 do
                 local text = RaidAssignments.HealRealMarks[i]
@@ -3826,7 +3941,7 @@ function RaidAssignments:PostHealAssignments()
                             end
                         end
                     end
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i - 1
             end
@@ -3866,7 +3981,7 @@ function RaidAssignments:PostGeneralAssignments()
             end
         end
         if n then
-            SendChatMessage("-- General Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
             while i <= 10 do
                 local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
@@ -3909,7 +4024,7 @@ function RaidAssignments:PostGeneralAssignments()
                         end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i + 1
             end
@@ -3929,7 +4044,7 @@ function RaidAssignments:PostGeneralAssignments()
             end
         end
         if n then
-            SendChatMessage("-- General Assignments --", chan, nil, chanNum)
+            RA_QueueMessage("-- General Assignments --", chan, nil, chanNum)
             local i = 1
             while i <= 10 do
                 local maxSlots = (i >= 9 and i <= 10) and 7 or 5  -- 7 slots for custom marks 9-10, 5 for others
@@ -3972,7 +4087,7 @@ function RaidAssignments:PostGeneralAssignments()
                         end
                     end
                     text = text .. "."
-                    SendChatMessage(text, chan, nil, chanNum)
+                    RA_QueueMessage(text, chan, nil, chanNum)
                 end
                 i = i + 1
             end
@@ -4031,7 +4146,7 @@ function RaidAssignments:PostCurses()
     end
 
     if RaidAssignments_Settings["usecolors"] then
-        SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+        RA_QueueMessage("-- Curse Assignments --", chan, nil, chanNum)
         for i = 9, 12 do
             local hasAny = false
             for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
@@ -4044,11 +4159,11 @@ function RaidAssignments:PostCurses()
                     else text = text .. ", " .. RaidAssignments:GetClassColors(v, "cff") end
                 end
                 text = text .. "."
-                SendChatMessage(text, chan, nil, chanNum)
+                RA_QueueMessage(text, chan, nil, chanNum)
             end
         end
     else
-        SendChatMessage("-- Curse Assignments --", chan, nil, chanNum)
+        RA_QueueMessage("-- Curse Assignments --", chan, nil, chanNum)
         for i = 9, 12 do
             local hasAny = false
             for _ in pairs(RaidAssignments.Marks[i] or {}) do hasAny = true; break end
@@ -4061,7 +4176,7 @@ function RaidAssignments:PostCurses()
                     else text = text .. ", " .. v end
                 end
                 text = text .. "."
-                SendChatMessage(text, chan, nil, chanNum)
+                RA_QueueMessage(text, chan, nil, chanNum)
             end
         end
     end
@@ -4158,7 +4273,7 @@ function RaidAssignments:PostCustomAssignments(i)
     end
 
     local windowTitle = RaidAssignments_Settings.CustomWindowTitles and RaidAssignments_Settings.CustomWindowTitles[i] or "Custom Assignments " .. tostring(i)
-    SendChatMessage("-- " .. windowTitle .. " --", chan, nil, chanNum)
+    RA_QueueMessage("-- " .. windowTitle .. " --", chan, nil, chanNum)
 
     -- COLORED POSTING (REVERSED ORDER)
     if RaidAssignments_Settings["usecolors"] then
@@ -4183,7 +4298,7 @@ function RaidAssignments:PostCustomAssignments(i)
                 end
                 local coloredLabel = markColors[mark] .. label .. "|r"
                 local text = coloredLabel .. ": " .. table.concat(names, ", ") .. "."
-                SendChatMessage(text, chan, nil, chanNum)
+                RA_QueueMessage(text, chan, nil, chanNum)
             end
         end
     else
@@ -4208,7 +4323,7 @@ function RaidAssignments:PostCustomAssignments(i)
                     label = RaidAssignments.CustomRealMarks[i][mark] or ("Mark " .. mark)
                 end
                 local text = label .. ": " .. table.concat(names, ", ") .. "."
-                SendChatMessage(text, chan, nil, chanNum)
+                RA_QueueMessage(text, chan, nil, chanNum)
             end
         end
     end
@@ -4609,56 +4724,69 @@ function RaidAssignments:UpdateCustom(i)
                         local f = CreateFrame("Button", nil, parent)
                         f:SetWidth(80)
                         f:SetHeight(25)
+                        f:EnableMouse(true)
 
-                        f.hpbar = CreateFrame("Frame", nil, f)
-                        f.hpbar:SetWidth(f:GetWidth() - 4)
-                        f.hpbar:SetHeight(24)
-                        f.hpbar:SetPoint("TOPLEFT", 2, -1)
-                        f.hpbar:SetFrameLevel(10)
+                        -- Black background
+                        local fbg = f:CreateTexture(nil, "BACKGROUND")
+                        fbg:SetTexture("Interface\\Buttons\\WHITE8X8")
+                        fbg:SetVertexColor(0.04, 0.04, 0.04, 0.96)
+                        fbg:SetAllPoints(f)
+                        f.fbg = fbg
 
-                        f.texture = f.hpbar:CreateTexture(nil, "ARTWORK")
-                        f.texture:SetWidth(f:GetWidth() - 4)
-                        f.texture:SetHeight(24)
-                        f.texture:SetPoint("TOPLEFT", 0, 0)
-                        f.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
-                        f.texture:SetGradientAlpha("VERTICAL", 1, 1, 1, 0, 1, 1, 1, 1)
+                        -- Class-coloured border lines
+                        local function MkL() local t = f:CreateTexture(nil, "BORDER"); t:SetTexture("Interface\\Buttons\\WHITE8X8"); return t end
+                        local bT=MkL(); local bB=MkL(); local bL=MkL(); local bR=MkL()
+                        bT:SetHeight(1); bT:SetPoint("TOPLEFT",f,"TOPLEFT",0,0);         bT:SetPoint("TOPRIGHT",f,"TOPRIGHT",0,0)
+                        bB:SetHeight(1); bB:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",0,0);   bB:SetPoint("BOTTOMRIGHT",f,"BOTTOMRIGHT",0,0)
+                        bL:SetWidth(1);  bL:SetPoint("TOPLEFT",f,"TOPLEFT",0,0);         bL:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",0,0)
+                        bR:SetWidth(1);  bR:SetPoint("TOPRIGHT",f,"TOPRIGHT",0,0);       bR:SetPoint("BOTTOMRIGHT",f,"BOTTOMRIGHT",0,0)
+                        f.borderLines = {bT, bB, bL, bR}
 
-                        f.name = f.hpbar:CreateFontString(nil, "OVERLAY")
-                        f.name:SetPoint("CENTER", 0, 0)
-                        f.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 12)
+                        -- Inner colour fill
+                        local fill = f:CreateTexture(nil, "ARTWORK")
+                        fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+                        fill:SetPoint("TOPLEFT",     f, "TOPLEFT",     1, -1)
+                        fill:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+                        f.fill = fill
+                        f.texture = fill  -- alias
+
+                        -- Hover glow
+                        local glow = f:CreateTexture(nil, "OVERLAY")
+                        glow:SetTexture("Interface\\Buttons\\WHITE8X8")
+                        glow:SetAllPoints(f)
+                        glow:Hide()
+                        f.glow = glow
+
+                        -- Player name
+                        f.name = f:CreateFontString(nil, "OVERLAY")
+                        f.name:SetPoint("CENTER", f, "CENTER", 0, 0)
+                        f.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 11)
                         f.name:SetTextColor(1, 1, 1, 1)
                         f.name:SetShadowOffset(1, -1)
+                        f.name:SetShadowColor(0, 0, 0, 1)
                         f.name:SetText(pname)
 
-                        f:SetBackdrop({
-                            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-                            edgeSize = 2,
-                            insets = { left = 0, right = 0, top = 0, bottom = 0 }
-                        })
-                        f:SetBackdropBorderColor(1, 0, 0, 1)
+                        f:SetScript("OnEnter", function() f.glow:Show() end)
+                        f:SetScript("OnLeave", function() f.glow:Hide() end)
 
-                        -- Store the variables we need for removal
+                        -- Store context for removal
                         f.customIndex = i
                         f.mark = mark
                         f.playerName = pname
                         f.slot = slot
 
-                        -- Auto-sync on removal
                         f:SetScript("OnClick", function()
                             if IsRaidOfficer() then
-                                -- Remove from custom assignments
                                 local maxSlots = (this.mark >= 9 and this.mark <= 10) and 6 or 5
                                 local removed = false
-
                                 for k = 1, maxSlots do
                                     if RaidAssignments.CustomMarks[this.customIndex][this.mark] and
-                                    RaidAssignments.CustomMarks[this.customIndex][this.mark][k] == this.playerName then
+                                       RaidAssignments.CustomMarks[this.customIndex][this.mark][k] == this.playerName then
                                         RaidAssignments.CustomMarks[this.customIndex][this.mark][k] = nil
                                         removed = true
                                         break
                                     end
                                 end
-
                                 if removed then
                                     this:Hide()
                                     if RaidAssignments.CustomFrames[this.customIndex].frames[this.mark] then
@@ -4670,16 +4798,13 @@ function RaidAssignments:UpdateCustom(i)
                             end
                         end)
 
-                        f:EnableMouse(true)
                         f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
                         f:SetFrameStrata("TOOLTIP")
-
                         RaidAssignments.CustomFrames[i].frames[mark][pname] = f
                     end
 
                     local f = RaidAssignments.CustomFrames[i].frames[mark][pname]
                     f:ClearAllPoints()
-                    -- Position on RIGHT side of the mark icon
                     local markFrame = _G["C"..i.."_M"..mark]
                     if markFrame then
                         f:SetPoint("LEFT", markFrame, "RIGHT", 10 + (85 * (slot - 1)), 0)
@@ -4687,11 +4812,8 @@ function RaidAssignments:UpdateCustom(i)
                         f:SetPoint("LEFT", parent, "LEFT", 100 + (85 * slot), -60 - ((35 + 5) * (mark - 1)))
                     end
 
-                    -- Update colors
-                    local r,g,b = RaidAssignments:GetClassColors(pname, "rgb")
-                    if f.texture then
-                        f.texture:SetVertexColor(r,g,b,1)
-                    end
+                    local r, g, b = RaidAssignments:GetClassColors(pname, "rgb")
+                    RA_ApplyFrameColor(f, r, g, b)
 
                     f:Show()
                 end
@@ -4706,14 +4828,7 @@ function RaidAssignments:UpdateCustom(i)
     end
 end
 
--- Hook setup call (run this during addon load)
-local orig_OnEvent = RaidAssignments.OnEvent
-function RaidAssignments:OnEvent()
-    orig_OnEvent(self)
-    if event == "ADDON_LOADED" and arg1 == "RaidAssignments" then
-        RaidAssignments:ConfigAllCustomFrames()
-    end
-end
+-- (Custom frames are fully initialized in the ADDON_LOADED handler above)
 
 --  Attach 8 Custom Assignment Buttons to Main Frame
 
@@ -4730,8 +4845,8 @@ function RaidAssignments:CreateCustomAssignmentButtons()
     end
     RaidAssignments.CustomButtons = {}
 
-    -- Create buttons: C1–C8, centered in row 2
-    -- Row2: 11×76px + 10×8px = 916px → x_start = (960-916)/2 = 22
+    -- Create buttons: C1-C8, centered in row 2
+    -- Row2: 11x76px + 10x8px = 916px -> x_start = (960-916)/2 = 22
     local ROW2_W   = 76
     local ROW2_GAP = 8
     local ROW2_X   = math.floor((960 - (11 * ROW2_W + 10 * ROW2_GAP)) / 2)  -- 22
@@ -5033,7 +5148,8 @@ function RaidAssignments:OpenCustomToolTip(frameName, customIndex)
 
                 frame:ClearAllPoints()
                 frame:SetPoint("TOPLEFT", tooltip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
-                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+                RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
             end
         end
@@ -5054,35 +5170,56 @@ function RaidAssignments:AddCustomToolTipFrame(name, tooltip, customIndex)
     end
 
     local frame = CreateFrame("Button", nil, tooltip)
-
-    -- COPY THE EXACT STYLING FROM AddToolTipFrame
-    local backdrop = {
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-        tile = false,
-        tileSize = 8,
-        edgeSize = 4,
-        insets = { left = 2, right = 2, top = 0, bottom = 0 }
-    }
-
     frame:SetWidth(80)
     frame:SetHeight(25)
-    frame:SetBackdrop(backdrop)
-    frame:SetBackdropColor(0, 0, 0, 0)
+    frame:EnableMouse(true)
 
-    frame.texture = frame:CreateTexture(nil, "ARTWORK")
-    frame.texture:SetWidth(frame:GetWidth() - 4)
-    frame.texture:SetHeight(24)
-    frame.texture:SetPoint("TOPLEFT", 2, -1)
-    frame.texture:SetTexture("Interface\\AddOns\\RaidAssignments\\assets\\LiteStep")
-    frame.texture:SetGradientAlpha("VERTICAL", 1, 1, 1, 0, 1, 1, 1, 1)
+    -- Black background
+    local bg = frame:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetVertexColor(0.04, 0.04, 0.04, 0.96)
+    bg:SetAllPoints(frame)
+    frame.bg = bg
 
+    -- Class-coloured border lines
+    local function MkLine()
+        local t = frame:CreateTexture(nil, "BORDER")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        return t
+    end
+    local bT = MkLine(); local bB = MkLine(); local bL = MkLine(); local bR = MkLine()
+    bT:SetHeight(1); bT:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bT:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0)
+    bB:SetHeight(1); bB:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0);   bB:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    bL:SetWidth(1);  bL:SetPoint("TOPLEFT",frame,"TOPLEFT",0,0);         bL:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",0,0)
+    bR:SetWidth(1);  bR:SetPoint("TOPRIGHT",frame,"TOPRIGHT",0,0);       bR:SetPoint("BOTTOMRIGHT",frame,"BOTTOMRIGHT",0,0)
+    frame.borderLines = {bT, bB, bL, bR}
+
+    -- Subtle inner colour fill
+    local fill = frame:CreateTexture(nil, "ARTWORK")
+    fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+    fill:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, -1)
+    fill:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    frame.fill = fill
+    frame.texture = fill
+
+    -- Hover glow
+    local glow = frame:CreateTexture(nil, "OVERLAY")
+    glow:SetTexture("Interface\\Buttons\\WHITE8X8")
+    glow:SetAllPoints(frame)
+    glow:Hide()
+    frame.glow = glow
+
+    -- Player name
     frame.name = frame:CreateFontString(nil, "OVERLAY")
-    frame.name:SetPoint("CENTER", 0, 0)
-    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 12)
+    frame.name:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    frame.name:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 11)
     frame.name:SetTextColor(1, 1, 1, 1)
     frame.name:SetShadowOffset(1, -1)
+    frame.name:SetShadowColor(0, 0, 0, 1)
     frame.name:SetText(name)
+
+    frame:SetScript("OnEnter", function() frame.glow:Show() end)
+    frame:SetScript("OnLeave", function() frame.glow:Hide() end)
 
     -- Toggle add/remove for custom assignments
     frame:SetScript("OnClick", function()
@@ -5104,7 +5241,6 @@ function RaidAssignments:AddCustomToolTipFrame(name, tooltip, customIndex)
                     end
                     RaidAssignments:UpdateCustom(cIndex)
                     RaidAssignments:SendCustom(cIndex)
-                    -- Refresh tooltip if open
                     if RaidAssignments.CustomToolTip and RaidAssignments.CustomToolTip:IsShown() then
                         RaidAssignments.CustomToolTip:Hide()
                         RaidAssignments:OpenCustomToolTip("C" .. cIndex .. "_M" .. mark, cIndex)
@@ -5127,7 +5263,6 @@ function RaidAssignments:AddCustomToolTipFrame(name, tooltip, customIndex)
                     RaidAssignments:UpdateCustom(cIndex)
                     RaidAssignments:SendCustom(cIndex)
                     this:Hide()
-                    -- Refresh tooltip after add to reposition remaining frames
                     if RaidAssignments.CustomToolTip and RaidAssignments.CustomToolTip:IsShown() then
                         RaidAssignments.CustomToolTip:Hide()
                         RaidAssignments:OpenCustomToolTip("C" .. cIndex .. "_M" .. mark, cIndex)
@@ -5136,9 +5271,6 @@ function RaidAssignments:AddCustomToolTipFrame(name, tooltip, customIndex)
             end
         end
     end)
-
-    frame:SetScript("OnEnter", function() end)
-    frame:SetScript("OnLeave", function() end)
     return frame
 end
 
@@ -5281,7 +5413,8 @@ function RaidAssignments:OpenGeneralToolTip(frameName)
                 RaidAssignments.Frames["GeneralToolTip"][name] = RaidAssignments.Frames["GeneralToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.GeneralToolTip)
                 local frame = RaidAssignments.Frames["GeneralToolTip"][name]
                 frame:SetPoint("TOPLEFT", RaidAssignments.GeneralToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
-                frame.texture:SetVertexColor(RaidAssignments:GetClassColors(name, "rgb"))
+                local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
+                RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
             end
         end
@@ -5399,6 +5532,7 @@ function RaidAssignments:AddCustomWindowTitleEditBox(frame, i)
             end
             RaidAssignments:SendCustomWindowTitle(i)
         end
+        this._sentOnEnter = true
         this:ClearFocus()
     end)
 
@@ -5409,6 +5543,11 @@ function RaidAssignments:AddCustomWindowTitleEditBox(frame, i)
     end)
 
     titleEditBox:SetScript("OnEditFocusLost", function()
+        -- If OnEnterPressed already committed and sent, skip to avoid double-send
+        if this._sentOnEnter then
+            this._sentOnEnter = false
+            return
+        end
         local txt = this:GetText()
         if not txt or txt == "" then
             local defaultTitle = "Custom Assignments " .. tostring(i)
@@ -5625,7 +5764,7 @@ function RaidAssignments:CreateYourMarkFrame()
     -- Invisible 1x1 anchor: the only frame with SetMovable(true).
     -- Drag events fire on the visible frame, which calls anchor:StartMoving().
     -- The visible frame follows because it is SetPoint("CENTER", anchor).
-    -- OnDragStop reads anchor:GetPoint() directly — no GetLeft/scale math.
+    -- OnDragStop reads anchor:GetPoint() directly -- no GetLeft/scale math.
     local anchor = CreateFrame("Frame", "RaidAssignmentsYourMarkAnchor", UIParent)
     anchor:SetWidth(1)
     anchor:SetHeight(1)
@@ -5686,7 +5825,7 @@ function RaidAssignments:CreateYourMarkFrame()
     })
     frame:SetBackdropColor(0.06, 0.06, 0.06, 0.93)
 
-    -- ── Coloured border: four solid 2-px lines ────────────────────────
+    -- -- Coloured border: four solid 2-px lines ------------------------
     -- We use WHITE8X8 which is a guaranteed 1-colour-fill texture in every client.
     local function MakeLine(parent)
         local t = parent:CreateTexture(nil, "BORDER")
@@ -5720,7 +5859,7 @@ function RaidAssignments:CreateYourMarkFrame()
         line:SetVertexColor(0, 0, 0, 1)
     end
 
-    -- ── Mark icon ─────────────────────────────────────────────────────
+    -- -- Mark icon -----------------------------------------------------
     -- Icon sits on ARTWORK; nothing above it except OVERLAY text.
     local markIcon = frame:CreateTexture("RaidAssignmentsYourMarkIcon", "ARTWORK")
     markIcon:SetWidth(ICON_SIZE)
@@ -5728,7 +5867,7 @@ function RaidAssignments:CreateYourMarkFrame()
     markIcon:SetPoint("LEFT", frame, "LEFT", PAD, 0)
     frame.markIcon = markIcon
 
-    -- ── Info section ──────────────────────────────────────────────────
+    -- -- Info section --------------------------------------------------
     local infoLeft = PAD + ICON_SIZE + PAD
 
     -- Target name
@@ -5776,7 +5915,7 @@ function RaidAssignments:CreateYourMarkFrame()
     hpPct:SetShadowOffset(1, -1)
     frame.hpPct = hpPct
 
-    -- ── Click ─────────────────────────────────────────────────────────
+    -- -- Click ---------------------------------------------------------
     -- OnMouseUp instead of OnClick so dragging doesn't trigger target-unit.
     frame:SetScript("OnMouseUp", function()
         if arg1 == "LeftButton" and not frame._wasDragging then
@@ -5789,7 +5928,7 @@ function RaidAssignments:CreateYourMarkFrame()
         frame._wasDragging = false
     end)
 
-    -- ── Tooltip ───────────────────────────────────────────────────────
+    -- -- Tooltip -------------------------------------------------------
     frame:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
@@ -5808,7 +5947,7 @@ function RaidAssignments:CreateYourMarkFrame()
     end)
     frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- ── OnUpdate: live name + HP (throttled to ~10Hz) ────────────────────
+    -- -- OnUpdate: live name + HP (throttled to ~10Hz) --------------------
     frame._updateT = 0
     frame:SetScript("OnUpdate", function()
         local f = frame
@@ -5834,14 +5973,14 @@ function RaidAssignments:CreateYourMarkFrame()
 
             f.hpPct:SetText(math.floor(pct * 100).."%")
 
-            -- green → yellow → red
+            -- green -> yellow -> red
             if pct > 0.5 then
                 f.hpBar:SetVertexColor((1 - pct) * 2, 1, 0, 1)
             else
                 f.hpBar:SetVertexColor(1, pct * 2, 0, 1)
             end
         else
-            -- No valid target or target is dead — hide the frame
+            -- No valid target or target is dead -- hide the frame
             f.assignedMarkIndex = nil
             f:Hide()
         end
@@ -5895,7 +6034,7 @@ function RaidAssignments:CreateYourMarkFrame()
     frame:Hide()
     RaidAssignments.YourMarkFrame = frame
 
-    -- ── Always-running ticker: polls every 0.5s even when the mark frame is hidden.
+    -- -- Always-running ticker: polls every 0.5s even when the mark frame is hidden.
     -- OnUpdate does NOT fire on hidden frames in WoW 1.12, so we need a separate
     -- always-visible frame to drive the check.
     local ticker = CreateFrame("Frame", "RaidAssignmentsMarkTicker", UIParent)

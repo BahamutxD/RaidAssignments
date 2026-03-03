@@ -6,5 +6,7 @@
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## SavedVariablesPerCharacter: RaidAssignments_Settings
+## SavedVariables: RaidAssignments_Compositions
 
 RaidAssignments.lua
+RaidCompositions.lua

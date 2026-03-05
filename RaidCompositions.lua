@@ -501,7 +501,7 @@ function RaidAssignments:CreateCompositionsPanel()
     -- access to RC_RefreshRow and RaidAssignments_Compositions.
 
     local ED_W          = 620
-    local ED_H          = 502
+    local ED_H          = 412
     local ED_PAD        = 10
     local ED_GROUP_W    = 64   -- width of each group column
     local ED_SLOT_H     = 24   -- height of each player slot button
@@ -516,6 +516,7 @@ function RaidAssignments:CreateCompositionsPanel()
     local ed_groups     = {}
     local ed_classes    = {}   -- { [name] = class }
     local ed_pool       = {}
+    local ed_poolScroll = 0    -- virtual scroll offset for the unassigned pool
     -- UI refs
     local ed_groupBtns  = {}   -- ed_groupBtns[g][s] = button frame
     local ed_poolBtns   = {}   -- ed_poolBtns[i] = button frame
@@ -581,26 +582,12 @@ function RaidAssignments:CreateCompositionsPanel()
         end
     end
 
+    -- ED_RefreshPoolBtn: kept for call-site compatibility but now delegates to
+    -- the virtual-scroll renderer (editorFrame.ED_RefreshPoolView).
+    -- The logical pool index i is no longer a 1:1 widget index.
     local function ED_RefreshPoolBtn(i)
-        local btn  = ed_poolBtns[i]
-        if not btn then return end
-        local name = ed_pool[i]
-        if name then
-            btn.rcName = name
-            btn.label:SetText(name)
-            local r, g2, b = ED_ClassColor(name)
-            if btn == ed_selected then
-                for _, ln in ipairs(btn.borderLines) do ln:SetVertexColor(0.95, 0.85, 0.20, 1) end
-                btn.label:SetTextColor(1, 1, 0.7, 1)
-            else
-                for _, ln in ipairs(btn.borderLines) do ln:SetVertexColor(r*0.6, g2*0.6, b*0.6, 1) end
-                btn.label:SetTextColor(r, g2, b, 1)
-                btn.glow:Hide()
-            end
-            btn:Show()
-        else
-            btn.rcName = nil
-            btn:Hide()
+        if editorFrame and editorFrame.ED_RefreshPoolView then
+            editorFrame.ED_RefreshPoolView()
         end
     end
 
@@ -610,8 +597,9 @@ function RaidAssignments:CreateCompositionsPanel()
                 ED_RefreshGroupBtn(g, s)
             end
         end
-        for i = 1, table.getn(ed_poolBtns) do
-            ED_RefreshPoolBtn(i)
+        -- Pool uses virtual scrolling; one call redraws all visible widgets
+        if editorFrame and editorFrame.ED_RefreshPoolView then
+            editorFrame.ED_RefreshPoolView()
         end
     end
 
@@ -731,20 +719,20 @@ function RaidAssignments:CreateCompositionsPanel()
             tile = false, edgeSize = 1,
             insets = { left=0, right=0, top=0, bottom=0 },
         })
-        editorFrame:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
-        editorFrame:SetBackdropBorderColor(0.15, 0.60, 0.72, 1)
+        editorFrame:SetBackdropColor(0.07, 0.07, 0.09, 0.97)
+        editorFrame:SetBackdropBorderColor(0.15, 0.15, 0.18, 1)
 
         -- Title bar bg
         local titleBg = editorFrame:CreateTexture(nil, "BACKGROUND")
         titleBg:SetTexture("Interface\\Buttons\\WHITE8X8")
-        titleBg:SetVertexColor(0.04, 0.04, 0.06, 1)
+        titleBg:SetVertexColor(0.05, 0.05, 0.07, 1)
         titleBg:SetPoint("TOPLEFT",  editorFrame, "TOPLEFT",  1, -1)
         titleBg:SetPoint("TOPRIGHT", editorFrame, "TOPRIGHT", -1, -1)
         titleBg:SetHeight(ED_HEADER_H - 2)
 
         local accent = editorFrame:CreateTexture(nil, "ARTWORK")
         accent:SetTexture("Interface\\Buttons\\WHITE8X8")
-        accent:SetVertexColor(0.15, 0.65, 0.80, 1)
+        accent:SetVertexColor(0.2, 0.8, 0.9, 0.9)
         accent:SetHeight(2)
         accent:SetPoint("TOPLEFT",  editorFrame, "TOPLEFT",  1, -(ED_HEADER_H - 2))
         accent:SetPoint("TOPRIGHT", editorFrame, "TOPRIGHT", -1, -(ED_HEADER_H - 2))
@@ -752,7 +740,7 @@ function RaidAssignments:CreateCompositionsPanel()
         -- Title label (updated when opened)
         local titleLbl = editorFrame:CreateFontString(nil, "OVERLAY")
         titleLbl:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 14)
-        titleLbl:SetTextColor(0.35, 0.88, 0.96, 1)
+        titleLbl:SetTextColor(0.9, 0.9, 0.95, 1)
         titleLbl:SetShadowOffset(1, -1)
         titleLbl:SetShadowColor(0, 0, 0, 1)
         titleLbl:SetPoint("LEFT", editorFrame, "TOPLEFT", ED_PAD, -(ED_HEADER_H/2) + 2)
@@ -803,9 +791,12 @@ function RaidAssignments:CreateCompositionsPanel()
         hintLbl:SetText("Click a player to select, then click a slot to move them")
         hintLbl:SetPoint("BOTTOMLEFT", editorFrame, "BOTTOMLEFT", ED_PAD, ED_PAD + 4)
 
-        -- -- "Add current raid" button --------------------------------------
+        -- -- "Add current raid" button (also works in test mode) -------------
         local addRaidBtn = RaidAssignments:MakeBtn(editorFrame, 100, 20, "Add Raid Members", function()
-            if GetNumRaidMembers() == 0 then return end
+            local _numMembers = RaidAssignments.TestMode
+                and table.getn(RaidAssignments.TestRoster)
+                or GetNumRaidMembers()
+            if _numMembers == 0 then return end
             -- Add any current raiders not already in groups or pool to the pool
             local inComp = {}
             for g = 1, 8 do
@@ -815,12 +806,22 @@ function RaidAssignments:CreateCompositionsPanel()
             end
             for _, pname in ipairs(ed_pool) do inComp[pname] = true end
 
-            for i2 = 1, GetNumRaidMembers() do
-                local rname, _, _, _, rclass = GetRaidRosterInfo(i2)
-                if rname and not inComp[rname] then
-                    ed_classes[rname] = rclass
-                    table.insert(ed_pool, rname)
-                    inComp[rname] = true
+            if RaidAssignments.TestMode then
+                for _, unit in ipairs(RaidAssignments.TestRoster) do
+                    if unit.name and not inComp[unit.name] then
+                        ed_classes[unit.name] = unit.class
+                        table.insert(ed_pool, unit.name)
+                        inComp[unit.name] = true
+                    end
+                end
+            else
+                for i2 = 1, GetNumRaidMembers() do
+                    local rname, _, _, _, rclass = GetRaidRosterInfo(i2)
+                    if rname and not inComp[rname] then
+                        ed_classes[rname] = rclass
+                        table.insert(ed_pool, rname)
+                        inComp[rname] = true
+                    end
                 end
             end
             ED_RefreshAll()
@@ -833,9 +834,11 @@ function RaidAssignments:CreateCompositionsPanel()
         -- Each player slot button is double the width of the old single-row layout.
         local GROUPS_AREA_W = ED_W - ED_POOL_W - ED_PAD * 3
         local COL_W         = math.floor(GROUPS_AREA_W / 4)   -- 4 columns instead of 8
-        -- Row 1: groups 1-4 at the normal top offset
-        -- Row 2: groups 5-8 below row 1's 5 slots + a small gap
-        local ROW_GROUP_H   = ED_HEADER_H + 18 + 5 * (ED_SLOT_H + ED_SLOT_GAP) + 16  -- height of one row-block
+        -- rowOff for row2 = label height + 5 slots + small inter-row gap
+        -- (does NOT re-include ED_HEADER_H, which is already added at each placement site)
+        local LABEL_GAP     = 14   -- px from header accent to group label
+        local INTER_ROW_GAP = 14   -- px between last slot of row1 and label of row2
+        local ROW_GROUP_H   = LABEL_GAP + 5 * (ED_SLOT_H + ED_SLOT_GAP) + INTER_ROW_GAP
 
         for g = 1, 8 do
             ed_groupBtns[g] = {}
@@ -858,10 +861,10 @@ function RaidAssignments:CreateCompositionsPanel()
             colBg:SetVertexColor(0.09, 0.09, 0.12, 1)
             colBg:SetWidth(COL_W - 2)
             colBg:SetHeight(5 * (ED_SLOT_H + ED_SLOT_GAP) + 4)
-            colBg:SetPoint("TOPLEFT", editorFrame, "TOPLEFT", colX, -ED_HEADER_H - 18 - rowOff)
+            colBg:SetPoint("TOPLEFT", editorFrame, "TOPLEFT", colX, -ED_HEADER_H - LABEL_GAP - rowOff)
 
             for s = 1, 5 do
-                local slotY = -(ED_HEADER_H + 18 + (s-1) * (ED_SLOT_H + ED_SLOT_GAP) + rowOff)
+                local slotY = -(ED_HEADER_H + LABEL_GAP + (s-1) * (ED_SLOT_H + ED_SLOT_GAP) + rowOff)
                 local btn   = RaidAssignments:MakeBtn(editorFrame, COL_W - 4, ED_SLOT_H, "", nil)
                 btn:SetPoint("TOPLEFT", editorFrame, "TOPLEFT", colX + 1, slotY)
                 btn:SetFrameStrata("FULLSCREEN")
@@ -894,8 +897,9 @@ function RaidAssignments:CreateCompositionsPanel()
             end
         end
 
-        -- -- Unassigned pool (right side) -----------------------------------
-        local poolX = ED_W - ED_POOL_W - ED_PAD
+        -- -- Unassigned pool (right side, virtual-scrolling) -----------------
+        local poolX          = ED_W - ED_POOL_W - ED_PAD
+        local ED_POOL_VISIBLE = 12   -- number of visible rows (fits in ED_H)
 
         local poolBg = editorFrame:CreateTexture(nil, "BACKGROUND")
         poolBg:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -910,27 +914,34 @@ function RaidAssignments:CreateCompositionsPanel()
         poolLbl:SetText("Unassigned")
         poolLbl:SetPoint("TOPLEFT", editorFrame, "TOPLEFT", poolX + 2, -ED_HEADER_H - 4)
 
+        -- Scroll indicator: shows "5-19/40" in top-right of pool header
+        local poolScrollLbl = editorFrame:CreateFontString(nil, "OVERLAY")
+        poolScrollLbl:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 9)
+        poolScrollLbl:SetTextColor(0.55, 0.55, 0.62, 1)
+        poolScrollLbl:SetPoint("TOPRIGHT", editorFrame, "TOPRIGHT", -ED_PAD, -ED_HEADER_H - 4)
+        poolScrollLbl:Hide()
+
         local poolDivider = editorFrame:CreateTexture(nil, "ARTWORK")
         poolDivider:SetTexture("Interface\\Buttons\\WHITE8X8")
-        poolDivider:SetVertexColor(0.15, 0.60, 0.72, 0.6)
+        poolDivider:SetVertexColor(0.20, 0.20, 0.24, 1)
         poolDivider:SetWidth(1)
         poolDivider:SetPoint("TOPLEFT",    editorFrame, "TOPLEFT",    poolX - 1, -ED_HEADER_H)
         poolDivider:SetPoint("BOTTOMLEFT", editorFrame, "BOTTOMLEFT", poolX - 1, ED_PAD + 30)
 
-        -- Create 40 pool slot buttons (max raid size)
-        for i2 = 1, 40 do
+        -- Create only ED_POOL_VISIBLE widget slots; reposition them on scroll
+        for i2 = 1, ED_POOL_VISIBLE do
             local pyOff = -(ED_HEADER_H + 18 + (i2 - 1) * (ED_SLOT_H + ED_SLOT_GAP))
             local btn = RaidAssignments:MakeBtn(editorFrame, ED_POOL_W - 4, ED_SLOT_H, "", nil)
             btn:SetPoint("TOPLEFT", editorFrame, "TOPLEFT", poolX + 2, pyOff)
             btn:SetFrameStrata("FULLSCREEN")
-            btn.rcPoolIdx = i2
+            btn.rcPoolIdx = i2   -- will be overwritten by ED_RefreshPoolView
             btn.rcName    = nil
             for _, ln in ipairs(btn.borderLines) do ln:SetVertexColor(0.18, 0.18, 0.22, 1) end
             btn.label:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 10)
 
-            local pi = i2
+            local wi = i2   -- widget index (1..ED_POOL_VISIBLE), fixed
             btn:SetScript("OnClick", function()
-                ED_OnClickPoolSlot(pi)
+                ED_OnClickPoolSlot(this.rcPoolIdx)
             end)
             btn:SetScript("OnEnter", function()
                 if this ~= ed_selected and this.rcName then
@@ -947,6 +958,65 @@ function RaidAssignments:CreateCompositionsPanel()
             btn:Hide()
             ed_poolBtns[i2] = btn
         end
+
+        -- ED_RefreshPoolView: rebind all pool widgets to the current scroll window.
+        -- Must be called whenever ed_pool changes OR ed_poolScroll changes.
+        -- Stored on editorFrame so ED_RefreshAll can call it.
+        editorFrame.ED_RefreshPoolView = function()
+            local total = table.getn(ed_pool)
+            -- Clamp scroll
+            local maxScroll = math.max(0, total - ED_POOL_VISIBLE)
+            if ed_poolScroll > maxScroll then ed_poolScroll = maxScroll end
+            if ed_poolScroll < 0 then ed_poolScroll = 0 end
+
+            for wi = 1, ED_POOL_VISIBLE do
+                local poolIdx = ed_poolScroll + wi   -- 1-based index into ed_pool
+                local btn = ed_poolBtns[wi]
+                if not btn then break end
+                btn.rcPoolIdx = poolIdx              -- logical index for click handler
+                local name = ed_pool[poolIdx]
+                if name then
+                    btn.rcName = name
+                    btn.label:SetText(name)
+                    local cls = ed_classes[name]
+                    local cr, cg, cb = 0.55, 0.55, 0.60
+                    if cls and RC_CLASS_COLOR[cls] then
+                        cr, cg, cb = RC_CLASS_COLOR[cls][1], RC_CLASS_COLOR[cls][2], RC_CLASS_COLOR[cls][3]
+                    end
+                    if btn == ed_selected then
+                        for _, ln in ipairs(btn.borderLines) do ln:SetVertexColor(0.95, 0.85, 0.20, 1) end
+                        btn.label:SetTextColor(1, 1, 0.7, 1)
+                    else
+                        for _, ln in ipairs(btn.borderLines) do ln:SetVertexColor(cr*0.6, cg*0.6, cb*0.6, 1) end
+                        btn.label:SetTextColor(cr, cg, cb, 1)
+                        btn.glow:Hide()
+                    end
+                    btn:Show()
+                else
+                    btn.rcName = nil
+                    btn.label:SetText("")
+                    for _, ln in ipairs(btn.borderLines) do ln:SetVertexColor(0.18, 0.18, 0.22, 1) end
+                    btn:Hide()
+                end
+            end
+
+            -- Update scroll indicator
+            if total > ED_POOL_VISIBLE then
+                local visEnd = math.min(ed_poolScroll + ED_POOL_VISIBLE, total)
+                poolScrollLbl:SetText((ed_poolScroll + 1).."-"..visEnd.."/"..total)
+                poolScrollLbl:Show()
+            else
+                poolScrollLbl:Hide()
+            end
+        end
+
+        -- Mouse-wheel on the pool background scrolls the list
+        editorFrame:EnableMouseWheel(true)
+        editorFrame:SetScript("OnMouseWheel", function()
+            ed_poolScroll = ed_poolScroll - arg1
+            editorFrame.ED_RefreshPoolView()
+        end)
+
     end -- ED_BuildFrame
 
     -- Open editor for slot i, loading its current saved data
@@ -992,24 +1062,38 @@ function RaidAssignments:CreateCompositionsPanel()
             end
         end
 
-        -- Also pull in any live raiders not already in the layout into the pool
-        if GetNumRaidMembers() > 0 then
+        -- Also pull in any live raiders (or test roster) not already in the layout into the pool
+        local _numLiveRaiders = RaidAssignments.TestMode
+            and table.getn(RaidAssignments.TestRoster)
+            or GetNumRaidMembers()
+        if _numLiveRaiders > 0 then
             local inLayout = {}
             for g = 1, 8 do
                 for s = 1, 5 do
                     if ed_groups[g][s] then inLayout[ed_groups[g][s]] = true end
                 end
             end
-            for ri = 1, GetNumRaidMembers() do
-                local rname, _, _, _, rclass = GetRaidRosterInfo(ri)
-                if rname and not inLayout[rname] then
-                    ed_classes[rname] = rclass
-                    table.insert(ed_pool, rname)
+            if RaidAssignments.TestMode then
+                for _, unit in ipairs(RaidAssignments.TestRoster) do
+                    if unit.name and not inLayout[unit.name] then
+                        ed_classes[unit.name] = unit.class
+                        table.insert(ed_pool, unit.name)
+                    end
+                end
+            else
+                for ri = 1, GetNumRaidMembers() do
+                    local rname, _, _, _, rclass = GetRaidRosterInfo(ri)
+                    if rname and not inLayout[rname] then
+                        ed_classes[rname] = rclass
+                        table.insert(ed_pool, rname)
+                    end
                 end
             end
         end
 
         editorFrame.titleLbl:SetText("EDITING: " .. (comp.name or ("Slot " .. i)))
+        -- Reset pool scroll to top whenever editor opens
+        ed_poolScroll = 0
         ED_RefreshAll()
         editorFrame:Show()
     end

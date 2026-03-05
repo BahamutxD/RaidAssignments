@@ -383,6 +383,43 @@ end
 RaidAssignments._rosterCache = {}
 RaidAssignments._rosterSet   = {}
 
+-- Single persistent frame for resolving nil UnitClass() values after login.
+-- Called by RAID_ROSTER_UPDATE. Polls at 0.1s until every raid member has a
+-- class, then stops. Reusing one frame means no stacking poller leak.
+RaidAssignments._classPoller = CreateFrame("Frame")
+RaidAssignments._classPoller:SetScript("OnUpdate", nil)
+
+function RaidAssignments:StartClassPoller()
+    local p = RaidAssignments._classPoller
+    p._elapsed = 0
+    p:SetScript("OnUpdate", function()
+        p._elapsed = p._elapsed + arg1
+        if p._elapsed < 0.1 then return end
+        p._elapsed = 0
+
+        local missing = false
+        for i = 1, GetNumRaidMembers() do
+            local name = UnitName("raid"..i)
+            if name and not RaidAssignments._rosterCache[name] then
+                missing = true
+                break
+            end
+        end
+
+        if missing then
+            RaidAssignments:RebuildRosterCache()
+            pcall(function()
+                RaidAssignments:UpdateTanks()
+                RaidAssignments:UpdateHeals()
+                RaidAssignments:UpdateGeneral()
+            end)
+        else
+            -- All classes resolved — stop polling until next RAID_ROSTER_UPDATE
+            p:SetScript("OnUpdate", nil)
+        end
+    end)
+end
+
 function RaidAssignments:RebuildRosterCache()
     local cache = {}
     local rset  = {}
@@ -427,8 +464,25 @@ function RaidAssignments:RebuildRosterCache()
 end
 
 -- Lookup helper: returns class string for a player name, or nil.
+-- Falls back to scanning UnitClass("raidN") directly if the cache doesn't have
+-- the class yet (e.g. right after login before the poller fills it in).
 local function GetCachedClass(name)
-    return RaidAssignments._rosterCache[name]
+    local class = RaidAssignments._rosterCache[name]
+    if class then return class end
+    -- Cache miss — try to resolve live from raid units
+    if not RaidAssignments.TestMode and name and GetRaidRosterInfo(1) then
+        for i = 1, GetNumRaidMembers() do
+            if UnitName("raid"..i) == name then
+                local c = UnitClass("raid"..i)
+                if c then
+                    -- Backfill the cache so next call is instant
+                    RaidAssignments._rosterCache[name] = c
+                end
+                return c
+            end
+        end
+    end
+    return nil
 end
 
 -- -----------------------------------------------------------------------------
@@ -437,7 +491,7 @@ end
 RaidAssignments:RegisterEvent("ADDON_LOADED")
 RaidAssignments:RegisterEvent("RAID_ROSTER_UPDATE")
 RaidAssignments:RegisterEvent("CHAT_MSG_WHISPER")
-RaidAssignments:RegisterEvent("UNIT_PORTRAIT_UPDATE")
+RaidAssignments:RegisterEvent("UNIT_NAME_UPDATE")
 RaidAssignments:RegisterEvent("CHAT_MSG_ADDON")
 RaidAssignments:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 
@@ -583,35 +637,48 @@ function RaidAssignments:OnEvent()
 
         RaidAssignments:UnregisterEvent("ADDON_LOADED")
 
-    elseif event == "RAID_ROSTER_UPDATE" or event == "UNIT_PORTRAIT_UPDATE" then
+    elseif event == "RAID_ROSTER_UPDATE" then
         RaidAssignments:RebuildRosterCache()
-        -- Update all relevant frames safely
         pcall(function()
             RaidAssignments:UpdateTanks()
             RaidAssignments:UpdateHeals()
             RaidAssignments:UpdateGeneral()
             RaidAssignments:UpdateYourMarkFrame()
             RaidAssignments:UpdateYourCurseFrame()
-
-            -- NOTE: We deliberately do NOT auto-broadcast marks on roster changes.
-            -- Doing so caused officers who just loaded in (with empty tables) to
-            -- overwrite everyone else's data. Marks are only sent by explicit user
-            -- action (assign/remove/reset) or in response to a RARequestMarks message.
         end)
-
+        -- Start the class poller in case some members still have nil UnitClass()
+        if not RaidAssignments.TestMode and GetRaidRosterInfo(1) then
+            RaidAssignments:StartClassPoller()
+        end
         -- Detect when this player just joined a raid group.
-        -- ALL players (officer or not) request current marks from whoever has them.
-        -- Officers will respond only if their own _marksPopulated flag is set,
-        -- preventing a freshly-loaded officer from broadcasting empty data.
         local currentCount = GetNumRaidMembers() or 0
         local previousCount = RaidAssignments._prevRaidMemberCount or 0
         if currentCount > 0 and previousCount == 0 then
-            -- Use a short timer so the RAID channel is fully available before sending
             RaidAssignments._requestMarksTimer = 2.5
         end
         RaidAssignments._prevRaidMemberCount = currentCount
 
-elseif event == "CHAT_MSG_ADDON" then
+    elseif event == "UNIT_NAME_UPDATE" then
+        -- Fires when a unit's identity data arrives from the server (including class).
+        -- Only act if it's a raid member we don't have a class for yet.
+        if not RaidAssignments.TestMode and GetRaidRosterInfo(1) then
+            local unit = arg1
+            if unit and string.find(unit, "^raid") then
+                local name = UnitName(unit)
+                local class = UnitClass(unit)
+                if name and class and not RaidAssignments._rosterCache[name] then
+                    RaidAssignments._rosterCache[name] = class
+                    RaidAssignments._rosterSet[name] = true
+                    pcall(function()
+                        RaidAssignments:UpdateTanks()
+                        RaidAssignments:UpdateHeals()
+                        RaidAssignments:UpdateGeneral()
+                    end)
+                end
+            end
+        end
+
+    elseif event == "CHAT_MSG_ADDON" then
     if not arg1 or type(arg1) ~= "string" then
         return
     end
@@ -989,7 +1056,7 @@ function RaidAssignments:MakeEditBox(name, parent, w, h)
         t:SetTexture("Interface\\Buttons\\WHITE8X8")
         return t
     end
-    local gc = {0.15, 0.15, 0.18}
+    local gc = {0.65, 0.52, 0.18}  -- yellowish gold border
     local bT = MkLine(); local bB = MkLine(); local bL = MkLine(); local bR = MkLine()
     bT:SetHeight(1); bT:SetPoint("TOPLEFT", eb, "TOPLEFT", 0, 0);       bT:SetPoint("TOPRIGHT", eb, "TOPRIGHT", 0, 0)
     bB:SetHeight(1); bB:SetPoint("BOTTOMLEFT", eb, "BOTTOMLEFT", 0, 0); bB:SetPoint("BOTTOMRIGHT", eb, "BOTTOMRIGHT", 0, 0)
@@ -1659,10 +1726,10 @@ function RaidAssignments:ConfigMainFrame()
     local ROW1_X    = math.floor((960 - ROW1_TOTAL) / 2)  -- 64
     local ROW1_Y    = 46
 
-    local ROW2_W    = 76
+    local ROW2_W    = 68  -- reduced ~10% to fit 4 boss buttons
     local ROW2_GAP  = 8
-    local ROW2_TOTAL = 11 * ROW2_W + 10 * ROW2_GAP  -- 916
-    local ROW2_X    = math.floor((960 - ROW2_TOTAL) / 2)  -- 22
+    local ROW2_TOTAL = 12 * ROW2_W + 11 * ROW2_GAP  -- 904
+    local ROW2_X    = math.floor((960 - ROW2_TOTAL) / 2)  -- 28
     local ROW2_Y    = 14
 
     -- Row 1 buttons -- Post buttons get a cyan tint to visually distinguish them
@@ -1814,6 +1881,32 @@ function RaidAssignments:ConfigMainFrame()
         else RaidAssignments.KTFrame:Show() end
     end)
     self.ktButton:SetPoint("BOTTOMLEFT", self.bg, "BOTTOMLEFT", ROW2_X + 8 * (ROW2_W + ROW2_GAP), ROW2_Y)
+
+    self.rupturanButton = RaidAssignments:MakeBtn(self.bg, ROW2_W, 24, "Rupturan", function()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+        if not RaidAssignments.RupturanFrame then
+            RaidAssignments.RupturanFrame = CreateFrame("Frame", "RaidAssignmentsRupturanFrame", UIParent)
+            RaidAssignments.RupturanFrame:SetFrameStrata("FULLSCREEN")
+            RaidAssignments.RupturanFrame:SetWidth(512)
+            RaidAssignments.RupturanFrame:SetHeight(512)
+            RaidAssignments.RupturanFrame:SetPoint("CENTER", 0, 0)
+            RaidAssignments.RupturanFrame:EnableMouse(true)
+            RaidAssignments.RupturanFrame:SetMovable(true)
+            RaidAssignments.RupturanFrame:RegisterForDrag("LeftButton")
+            RaidAssignments.RupturanFrame:SetScript("OnDragStart", function() this:StartMoving() end)
+            RaidAssignments.RupturanFrame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+            RaidAssignments.RupturanFrame.texture = RaidAssignments.RupturanFrame:CreateTexture(nil, "ARTWORK")
+            RaidAssignments.RupturanFrame.texture:SetAllPoints(RaidAssignments.RupturanFrame)
+            RaidAssignments.RupturanFrame.texture:SetTexture("Interface\AddOns\RaidAssignments\assets\Rupturan.tga")
+            RaidAssignments.RupturanFrame.close = CreateFrame("Button", nil, RaidAssignments.RupturanFrame, "UIPanelCloseButton")
+            RaidAssignments.RupturanFrame.close:SetPoint("TOPRIGHT", RaidAssignments.RupturanFrame, "TOPRIGHT")
+            RaidAssignments.RupturanFrame.close:SetScript("OnClick", function() RaidAssignments.RupturanFrame:Hide() end)
+            RaidAssignments.RupturanFrame:Hide()
+        end
+        if RaidAssignments.RupturanFrame:IsShown() then RaidAssignments.RupturanFrame:Hide()
+        else RaidAssignments.RupturanFrame:Show() end
+    end)
+    self.rupturanButton:SetPoint("BOTTOMLEFT", self.bg, "BOTTOMLEFT", ROW2_X + 11 * (ROW2_W + ROW2_GAP), ROW2_Y)
 
 	-- Initialize GeneralToolTip Frame
     RaidAssignments.GeneralToolTip:SetFrameStrata("FULLSCREEN")
@@ -2792,9 +2885,9 @@ function RaidAssignments:OpenToolTip(frameName)
         local actualRows = math.min(playersPerColumn, totalPlayers)
 
         -- Create columns
-        local columnWidth = 80
-        local totalWidth = columnWidth * numColumns
-        local totalHeight = 25 * actualRows
+        local columnWidth = 82  -- 80 frame + 1px gap each side
+        local totalWidth = columnWidth * numColumns + 1  -- trailing right gap
+        local totalHeight = 26 * actualRows + 1  -- 25 frame + 1px gap, plus trailing bottom gap
 
         -- Set up the tooltip backdrop first
         RaidAssignments.ToolTip:SetBackdrop({
@@ -2870,7 +2963,7 @@ function RaidAssignments:OpenToolTip(frameName)
 
                 RaidAssignments.Frames["ToolTip"][name] = RaidAssignments.Frames["ToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.ToolTip)
                 local frame = RaidAssignments.Frames["ToolTip"][name]
-                frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
+                frame:SetPoint("TOPLEFT", RaidAssignments.ToolTip, "TOPLEFT", (col - 1) * columnWidth + 1, -1 - (26 * rowIndex))
                 local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
                 RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
@@ -2930,9 +3023,9 @@ function RaidAssignments:OpenHealToolTip(frameName)
         local actualRows = math.min(playersPerColumn, totalPlayers)
 
         -- Create columns
-        local columnWidth = 80
-        local totalWidth = columnWidth * numColumns
-        local totalHeight = 25 * actualRows
+        local columnWidth = 82  -- 80 frame + 1px gap each side
+        local totalWidth = columnWidth * numColumns + 1  -- trailing right gap
+        local totalHeight = 26 * actualRows + 1  -- 25 frame + 1px gap, plus trailing bottom gap
 
         -- Set up the tooltip backdrop first
         RaidAssignments.HealToolTip:SetBackdrop({
@@ -3009,7 +3102,7 @@ function RaidAssignments:OpenHealToolTip(frameName)
 
                 RaidAssignments.Frames["HealToolTip"][name] = RaidAssignments.Frames["HealToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.HealToolTip)
                 local frame = RaidAssignments.Frames["HealToolTip"][name]
-                frame:SetPoint("TOPLEFT", RaidAssignments.HealToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
+                frame:SetPoint("TOPLEFT", RaidAssignments.HealToolTip, "TOPLEFT", (col - 1) * columnWidth + 1, -1 - (26 * rowIndex))
                 local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
                 RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
@@ -3687,9 +3780,47 @@ function RaidAssignments:PostAssignments()
     end
 end
 
-function RaidAssignments:GenerateTestRoster()
-    RaidAssignments.TestRoster = {}
-    local classes = {"Warrior", "Warlock", "Rogue", "Priest", "Mage", "Hunter", "Druid", "Paladin", "Shaman"}
+-- Shared helper: reads guild data (offline members must already be shown),
+-- shuffles, stores up to 40 into TestRoster, rebuilds cache, updates UI.
+local function RA_BuildRosterFromGuild(wasShowingOffline)
+    -- Guard: only run once even if GUILD_ROSTER_UPDATE fires multiple times.
+    -- _guildRosterBuilding is set to true before calling this; we clear it on
+    -- first entry and bail on any subsequent call.
+    if not RaidAssignments._guildRosterBuilding then return end
+    RaidAssignments._guildRosterBuilding = false  -- consumed
+
+    SetGuildRosterShowOffline(wasShowingOffline)
+
+    local numGuild = GetNumGuildMembers and GetNumGuildMembers() or 0
+    local guildPool = {}
+    for i = 1, numGuild do
+        -- GetGuildRosterInfo: name, rank, rankIndex, level, class, ...
+        local name, _, _, _, gClass = GetGuildRosterInfo(i)
+        if name and gClass then
+            table.insert(guildPool, { name = name, class = gClass })
+        end
+    end
+
+    if table.getn(guildPool) > 0 then
+        local n = table.getn(guildPool)
+        for i = n, 2, -1 do
+            local j = math.random(i)
+            guildPool[i], guildPool[j] = guildPool[j], guildPool[i]
+        end
+        RaidAssignments.TestRoster = {}
+        for i = 1, math.min(40, n) do
+            table.insert(RaidAssignments.TestRoster, { name = guildPool[i].name, class = guildPool[i].class })
+        end
+        RaidAssignments:RebuildRosterCache()
+        RaidAssignments:UpdateTanks()
+        RaidAssignments:UpdateHeals()
+        RaidAssignments:UpdateGeneral()
+        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Test roster built from guild (" .. table.getn(RaidAssignments.TestRoster) .. " members)")
+        return
+    end
+
+    -- Guild unavailable — fall back to hardcoded dummies
+    local fallbackClasses = {"Warrior", "Warlock", "Rogue", "Priest", "Mage", "Hunter", "Druid", "Paladin", "Shaman"}
     local names = {
         "Abelius", "Arboldemango", "Azzer", "Bestigor", "Bigbron", "Bombardero", "Calogero", "Catu",
         "Culin", "Dardork", "Darez", "Dragovar", "Durotavich", "Edeax", "Elcucho", "Eisla",
@@ -3697,14 +3828,51 @@ function RaidAssignments:GenerateTestRoster()
         "Neralone", "Ocuspocuss", "Onrul", "Palawhite", "Pandamonium", "Pimienta", "Pokker", "Fionna",
         "Selner", "Sinnergia", "Tankita", "Teletubbiei", "Uburrka", "Xanty", "Xposed", "Zeroxkg"
     }
+    RaidAssignments.TestRoster = {}
     for i = 1, 40 do
-        local class = classes[math.mod(i - 1, 9) + 1] -- Distribute classes evenly
-        local name = names[i] -- Use name from the pool
         table.insert(RaidAssignments.TestRoster, {
-            name = name,
-            class = class
+            name  = names[i],
+            class = fallbackClasses[math.mod(i - 1, 9) + 1],
         })
     end
+    RaidAssignments:RebuildRosterCache()
+    RaidAssignments:UpdateTanks()
+    RaidAssignments:UpdateHeals()
+    RaidAssignments:UpdateGeneral()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Test mode enabled with 40 dummy players")
+end
+
+function RaidAssignments:GenerateTestRoster()
+    RaidAssignments.TestRoster = {}
+
+    DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Fetching guild roster for test mode...")
+
+    local wasShowingOffline = GetGuildRosterShowOffline and GetGuildRosterShowOffline() or 0
+    SetGuildRosterShowOffline(1)
+
+    -- Flag to prevent RA_BuildRosterFromGuild running more than once
+    -- (GUILD_ROSTER_UPDATE can fire several times per GuildRoster() call)
+    RaidAssignments._guildRosterBuilding = true
+
+    -- Try to read immediately in case the guild list is already fully cached.
+    -- If we already have members with offline included, no need to wait.
+    local numNow = GetNumGuildMembers and GetNumGuildMembers() or 0
+    if numNow > 0 then
+        RA_BuildRosterFromGuild(wasShowingOffline)
+        return
+    end
+
+    -- Guild data not yet available — request from server and wait for the event.
+    GuildRoster()
+
+    local waitFrame = CreateFrame("Frame")
+    waitFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
+    waitFrame:SetScript("OnEvent", function()
+        -- Unregister immediately so subsequent GUILD_ROSTER_UPDATE fires are ignored
+        waitFrame:UnregisterEvent("GUILD_ROSTER_UPDATE")
+        waitFrame:SetScript("OnEvent", nil)
+        RA_BuildRosterFromGuild(wasShowingOffline)
+    end)
 end
 
 function RaidAssignments:GetTestClass(name)
@@ -3719,11 +3887,9 @@ end
 function RaidAssignments:ToggleTestMode()
     if not RaidAssignments.TestMode then
         RaidAssignments.TestMode = true
+        -- GenerateTestRoster fetches guild async; it calls RebuildRosterCache
+        -- and UpdateTanks/Heals/General itself once data arrives.
         RaidAssignments:GenerateTestRoster()
-        -- Populate the roster cache from the test roster so GetCachedClass(),
-        -- IsInRaid(), and GetClassColors() all work correctly in test mode.
-        RaidAssignments:RebuildRosterCache()
-        DEFAULT_CHAT_FRAME:AddMessage("|cffC79C6E RaidAssignments 2.0|r: Test mode enabled with 40 dummy players")
     else
         RaidAssignments.TestMode = false
         RaidAssignments.TestRoster = {}
@@ -4415,18 +4581,46 @@ function RaidAssignments:ConfigCustomFrame(i)
     accentLine:SetPoint("TOPLEFT",  frame, "TOPLEFT",  1, -37)
     accentLine:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -37)
 
-    -- Create title EditBox WITH AUTO-SYNC
-    frame.titleEditBox = RaidAssignments:AddCustomWindowTitleEditBox(frame, i)
-
-    -- Title display
-    frame.title = frame:CreateFontString(nil, "OVERLAY")
-    frame.title:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 20)
-    frame.title:SetPoint("TOP", frame.titleEditBox, "BOTTOM", 0, -5)
-
-    -- Initialize with current title
+    -- Title: displayed as a FontString in the title bar.
+    -- Clicking it swaps it for an inline editbox to rename.
     local currentTitle = RaidAssignments_Settings.CustomWindowTitles[i] or "Custom Assignments " .. tostring(i)
+
+    -- Clickable title button (invisible button over the FontString for hit-testing)
+    local titleBtn = CreateFrame("Button", nil, frame)
+    titleBtn:SetWidth(150)
+    titleBtn:SetHeight(28)
+    titleBtn:SetPoint("TOP", frame, "TOP", 0, -4)
+    titleBtn:EnableMouse(true)
+
+    frame.title = titleBtn:CreateFontString(nil, "OVERLAY")
+    frame.title:SetFont("Interface\\AddOns\\RaidAssignments\\assets\\BalooBhaina.ttf", 18)
+    frame.title:SetTextColor(0.9, 0.9, 0.95, 1)
+    frame.title:SetShadowOffset(1, -1)
+    frame.title:SetShadowColor(0, 0, 0, 1)
+    frame.title:SetAllPoints(titleBtn)
+    frame.title:SetJustifyH("CENTER")
     frame.title:SetText(currentTitle)
+
+    -- Hover highlight hint
+    titleBtn:SetScript("OnEnter", function()
+        frame.title:SetTextColor(1, 0.9, 0.4, 1)
+    end)
+    titleBtn:SetScript("OnLeave", function()
+        frame.title:SetTextColor(0.9, 0.9, 0.95, 1)
+    end)
+
+    -- Hidden inline editbox, shown on click
+    frame.titleEditBox = RaidAssignments:AddCustomWindowTitleEditBox(frame, i)
     frame.titleEditBox:SetText(currentTitle)
+
+    titleBtn:SetScript("OnClick", function()
+        local txt = RaidAssignments.CustomWindowTitles[i] or currentTitle
+        frame.titleEditBox:SetText(txt)
+        frame.title:Hide()
+        frame.titleEditBox:Show()
+        frame.titleEditBox:SetFocus()
+        frame.titleEditBox:HighlightText()
+    end)
 
     -- Add class filters
     local CLASS_ICON_SIZE_C = 18
@@ -4846,10 +5040,10 @@ function RaidAssignments:CreateCustomAssignmentButtons()
     RaidAssignments.CustomButtons = {}
 
     -- Create buttons: C1-C8, centered in row 2
-    -- Row2: 11x76px + 10x8px = 916px -> x_start = (960-916)/2 = 22
-    local ROW2_W   = 76
+    -- Row2: 12x68px + 11x8px = 904px -> x_start = (960-904)/2 = 28
+    local ROW2_W   = 68  -- reduced ~10% to match boss button row
     local ROW2_GAP = 8
-    local ROW2_X   = math.floor((960 - (11 * ROW2_W + 10 * ROW2_GAP)) / 2)  -- 22
+    local ROW2_X   = math.floor((960 - (12 * ROW2_W + 11 * ROW2_GAP)) / 2)  -- 28
     local ROW2_Y   = 14
 
     for i = 1, 8 do
@@ -5073,9 +5267,9 @@ function RaidAssignments:OpenCustomToolTip(frameName, customIndex)
         local actualRows = math.min(playersPerColumn, totalPlayers)
 
         -- Create columns
-        local columnWidth = 80
-        local totalWidth = columnWidth * numColumns
-        local totalHeight = 25 * actualRows
+        local columnWidth = 82  -- 80 frame + 1px gap each side
+        local totalWidth = columnWidth * numColumns + 1  -- trailing right gap
+        local totalHeight = 26 * actualRows + 1  -- 25 frame + 1px gap, plus trailing bottom gap
 
         -- Set up the tooltip backdrop
         tooltip:SetWidth(totalWidth)
@@ -5147,7 +5341,7 @@ function RaidAssignments:OpenCustomToolTip(frameName, customIndex)
                 RaidAssignments.CustomFrames[customIndex].tooltipFrames[name] = frame
 
                 frame:ClearAllPoints()
-                frame:SetPoint("TOPLEFT", tooltip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
+                frame:SetPoint("TOPLEFT", tooltip, "TOPLEFT", (col - 1) * columnWidth + 1, -1 - (26 * rowIndex))
                 local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
                 RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
@@ -5357,9 +5551,9 @@ function RaidAssignments:OpenGeneralToolTip(frameName)
         local playersPerColumn = math.ceil(totalPlayers / numColumns)
         local actualRows = math.min(playersPerColumn, totalPlayers)
 
-        local columnWidth = 80
-        local totalWidth = columnWidth * numColumns
-        local totalHeight = 25 * actualRows
+        local columnWidth = 82  -- 80 frame + 1px gap each side
+        local totalWidth = columnWidth * numColumns + 1  -- trailing right gap
+        local totalHeight = 26 * actualRows + 1  -- 25 frame + 1px gap, plus trailing bottom gap
 
         -- Position and size the tooltip
         RaidAssignments.GeneralToolTip:SetWidth(totalWidth)
@@ -5412,7 +5606,7 @@ function RaidAssignments:OpenGeneralToolTip(frameName)
 
                 RaidAssignments.Frames["GeneralToolTip"][name] = RaidAssignments.Frames["GeneralToolTip"][name] or RaidAssignments:AddToolTipFrame(name, RaidAssignments.GeneralToolTip)
                 local frame = RaidAssignments.Frames["GeneralToolTip"][name]
-                frame:SetPoint("TOPLEFT", RaidAssignments.GeneralToolTip, "TOPLEFT", (col - 1) * columnWidth + 2, -2 - (25 * rowIndex))
+                frame:SetPoint("TOPLEFT", RaidAssignments.GeneralToolTip, "TOPLEFT", (col - 1) * columnWidth + 1, -1 - (26 * rowIndex))
                 local r, g, b = RaidAssignments:GetClassColors(name, "rgb")
                 RA_ApplyFrameColor(frame, r, g, b)
                 frame:Show()
@@ -5498,70 +5692,48 @@ function RaidAssignments:SyncClassFilters()
 end
 
 function RaidAssignments:AddCustomWindowTitleEditBox(frame, i)
-    local titleEditBox = RaidAssignments:MakeEditBox("CustomWindowTitle"..i, frame, 200, 24)
-    titleEditBox:SetPoint("TOP", frame, "TOP", 0, -10)
+    -- Hidden inline editbox — shown only when the user clicks the title label.
+    local eb = RaidAssignments:MakeEditBox("CustomWindowTitle"..i, frame, 150, 24)
+    eb:SetPoint("TOP", frame, "TOP", 0, -6)
+    eb:Hide()
 
-    -- Ensure saved variables structure exists
-    RaidAssignments_Settings.CustomWindowTitles = RaidAssignments_Settings.CustomWindowTitles or {}
-    RaidAssignments.CustomWindowTitles = RaidAssignments_Settings.CustomWindowTitles
+    local _busy = false  -- guard against OnEditFocusLost re-entry
 
-    local defaultTitle = RaidAssignments.CustomWindowTitles[i] or "Custom Assignments " .. tostring(i)
-    titleEditBox:SetText(defaultTitle)
-
-    -- Update the frame title initially
-    if frame.title then
-        frame.title:SetText(defaultTitle)
+    local function commitTitle()
+        if _busy then return end
+        _busy = true
+        local txt = eb:GetText()
+        if not txt or txt == "" then
+            txt = "Custom Assignments " .. tostring(i)
+        end
+        RaidAssignments.CustomWindowTitles[i] = txt
+        RaidAssignments_Settings.CustomWindowTitles[i] = txt
+        if frame.title then
+            frame.title:SetText(txt)
+            frame.title:Show()
+        end
+        eb:Hide()
+        eb:ClearFocus()
+        _busy = false
+        RaidAssignments:SendCustomWindowTitle(i)
     end
 
-    titleEditBox:SetScript("OnEnterPressed", function()
-        local txt = this:GetText()
-        if txt and txt ~= "" then
-            RaidAssignments.CustomWindowTitles[i] = txt
-            RaidAssignments_Settings.CustomWindowTitles[i] = txt
-            if frame.title then
-                frame.title:SetText(txt)
-            end
-            RaidAssignments:SendCustomWindowTitle(i)
-        else
-            local defaultTitle = "Custom Assignments " .. tostring(i)
-            this:SetText(defaultTitle)
-            RaidAssignments.CustomWindowTitles[i] = defaultTitle
-            RaidAssignments_Settings.CustomWindowTitles[i] = defaultTitle
-            if frame.title then
-                frame.title:SetText(defaultTitle)
-            end
-            RaidAssignments:SendCustomWindowTitle(i)
-        end
-        this._sentOnEnter = true
-        this:ClearFocus()
-    end)
+    local function cancelEdit()
+        if _busy then return end
+        _busy = true
+        local txt = RaidAssignments.CustomWindowTitles[i] or "Custom Assignments " .. tostring(i)
+        eb:SetText(txt)
+        eb:Hide()
+        eb:ClearFocus()
+        if frame.title then frame.title:Show() end
+        _busy = false
+    end
 
-    titleEditBox:SetScript("OnEscapePressed", function()
-        local currentTitle = RaidAssignments.CustomWindowTitles[i] or "Custom Assignments " .. tostring(i)
-        this:SetText(currentTitle)
-        this:ClearFocus()
-    end)
+    eb:SetScript("OnEnterPressed", function() commitTitle() end)
+    eb:SetScript("OnEscapePressed", function() cancelEdit() end)
+    eb:SetScript("OnEditFocusLost", function() cancelEdit() end)
 
-    titleEditBox:SetScript("OnEditFocusLost", function()
-        -- If OnEnterPressed already committed and sent, skip to avoid double-send
-        if this._sentOnEnter then
-            this._sentOnEnter = false
-            return
-        end
-        local txt = this:GetText()
-        if not txt or txt == "" then
-            local defaultTitle = "Custom Assignments " .. tostring(i)
-            this:SetText(defaultTitle)
-            RaidAssignments.CustomWindowTitles[i] = defaultTitle
-            RaidAssignments_Settings.CustomWindowTitles[i] = defaultTitle
-            if frame.title then
-                frame.title:SetText(defaultTitle)
-            end
-            RaidAssignments:SendCustomWindowTitle(i)
-        end
-    end)
-
-    return titleEditBox
+    return eb
 end
 
 function RaidAssignments:UpdateYourMarkToggleState()

@@ -1,10 +1,9 @@
 ## Interface: 11200
 ## Title: [Conquistadores] |cff00ccff Raid Assignments|r
 ## Author: |cff0000FFBha!
-## Version: 4.1
+## Version: 5.0
 ## Notes: Raid Assignements - by |cffFFF569Bha!
 ## DefaultState: Enabled
-## LoadOnDemand: 0
 ## SavedVariablesPerCharacter: RaidAssignments_Settings
 ## SavedVariables: RaidAssignments_Compositions
 
